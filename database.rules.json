@@ -1,0 +1,30 @@
+{
+  "rules": {
+    ".read": "auth != null",
+    ".write": "auth != null",
+    "promotions": {
+      ".indexOn": ["updatedAt"]
+    },
+    "products": {
+      ".indexOn": ["updatedAt", "sku", "barcode"]
+    },
+    "customers": {
+      ".indexOn": ["phone", "name"]
+    },
+    "suppliers": {
+      ".indexOn": ["name"]
+    },
+    "transactions": {
+      ".indexOn": ["timestamp", "customerId", "onlineOrderId"]
+    },
+    "vouchers": {
+      ".indexOn": ["code", "status"]
+    },
+    "purchases": {
+      ".indexOn": ["date", "supplierId"]
+    },
+    "expenses": {
+      ".indexOn": ["date"]
+    }
+  }
+}

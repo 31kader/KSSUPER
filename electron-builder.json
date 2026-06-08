@@ -1,0 +1,25 @@
+{
+  "appId": "com.nexus.pos.pro",
+  "productName": "NEXUS POS PRO",
+  "directories": {
+    "output": "dist-electron"
+  },
+  "files": [
+    "dist/**/*",
+    "electron-main.cjs",
+    "public/**/*",
+    "package.json"
+  ],
+  "win": {
+    "target": [
+      "nsis"
+    ]
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "NEXUS POS PRO"
+  }
+}

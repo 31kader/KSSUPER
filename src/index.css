@@ -1,0 +1,399 @@
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-sans-arabic: "Cairo", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --animate-spin-slow: spin-slow 20s linear infinite;
+
+  --color-industrial-950: var(--bg-industrial-950);
+  --color-industrial-900: var(--bg-industrial-900);
+  --color-industrial-800: var(--bg-industrial-800);
+  --color-industrial-700: var(--bg-industrial-700);
+  --color-industrial-400: var(--text-industrial-400);
+  --color-industrial-500: var(--text-industrial-500);
+  
+  --color-nardo: var(--bg-nardo);
+  --color-workspace: var(--bg-workspace);
+  
+  --shadow-neon-indigo: var(--neon-indigo);
+  --shadow-neon-cyan: var(--neon-cyan);
+  --shadow-soft: var(--soft-shadow);
+}
+
+:root {
+  --bg-industrial-950: #0a0a0c;
+  --bg-industrial-900: #121214;
+  --bg-industrial-800: #1a1a1e;
+  --bg-industrial-700: #26262e;
+  --text-industrial-400: #f1f5f9;
+  --text-industrial-500: #94a3b8;
+  --bg-nardo: #0a0a0f;
+  --bg-workspace: #12121a;
+  --card-border: rgba(255, 255, 255, 0.05);
+  --text-primary: #ffffff;
+  --text-secondary: #94a3b8;
+  --input-bg: rgba(255, 255, 255, 0.03);
+  --input-border: rgba(255, 255, 255, 0.1);
+  --neon-indigo: 0 0 15px rgba(99, 102, 241, 0.3);
+  --neon-cyan: 0 0 15px rgba(6, 182, 212, 0.3);
+  --soft-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1);
+  /* Brand specific colors */
+  --brand-primary: #6366f1;
+  --brand-hover: #4f46e5;
+  --brand-shadow: rgba(99, 102, 241, 0.25);
+}
+
+.emerald {
+  --bg-industrial-950: #020904;
+  --bg-industrial-900: #041407;
+  --bg-industrial-800: #06200c;
+  --bg-industrial-700: #0f391a;
+  --text-industrial-400: #ecfdf5;
+  --text-industrial-500: #34d399;
+  --bg-nardo: #020904;
+  --bg-workspace: #041407;
+  --card-border: rgba(16, 185, 129, 0.15);
+  --text-primary: #ffffff;
+  --text-secondary: #a7f3d0;
+  --input-bg: rgba(16, 185, 129, 0.04);
+  --input-border: rgba(16, 185, 129, 0.2);
+  --neon-indigo: 0 0 15px rgba(16, 185, 129, 0.35);
+  --neon-cyan: 0 0 15px rgba(52, 211, 153, 0.3);
+  --soft-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.6);
+  --brand-primary: #10b981;
+  --brand-hover: #059669;
+  --brand-shadow: rgba(16, 185, 129, 0.25);
+}
+
+.gold {
+  --bg-industrial-950: #080603;
+  --bg-industrial-900: #100c06;
+  --bg-industrial-800: #1a140b;
+  --bg-industrial-700: #2c2112;
+  --text-industrial-400: #fffdf5;
+  --text-industrial-500: #f59e0b;
+  --bg-nardo: #080603;
+  --bg-workspace: #100c06;
+  --card-border: rgba(217, 119, 6, 0.15);
+  --text-primary: #ffffff;
+  --text-secondary: #fde68a;
+  --input-bg: rgba(217, 119, 6, 0.04);
+  --input-border: rgba(217, 119, 6, 0.2);
+  --neon-indigo: 0 0 15px rgba(217, 119, 6, 0.35);
+  --neon-cyan: 0 0 15px rgba(245, 158, 11, 0.3);
+  --soft-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.6);
+  --brand-primary: #d97706;
+  --brand-hover: #b45309;
+  --brand-shadow: rgba(217, 119, 6, 0.25);
+}
+
+.nardo-grey-racing {
+  --bg-industrial-950: #111317;
+  --bg-industrial-900: #1b1c21;
+  --bg-industrial-800: #2b2c32;
+  --bg-industrial-700: #3f4047;
+  --text-industrial-400: #f3f4f6;
+  --text-industrial-500: #f97316;
+  --bg-nardo: #111317;
+  --bg-workspace: #1b1c21;
+  --card-border: rgba(249, 115, 22, 0.18);
+  --text-primary: #ffffff;
+  --text-secondary: #ffedd5;
+  --input-bg: rgba(249, 115, 22, 0.03);
+  --input-border: rgba(249, 115, 22, 0.2);
+  --neon-indigo: 0 0 15px rgba(249, 115, 22, 0.4);
+  --neon-cyan: 0 0 15px rgba(251, 146, 60, 0.35);
+  --soft-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.6);
+  --brand-primary: #f97316;
+  --brand-hover: #ea580c;
+  --brand-shadow: rgba(249, 115, 22, 0.25);
+}
+
+/* Custom dark overrides for hardcoded background & text tailwind classes */
+html:not(.light) .bg-white,
+html:not(.light) .bg-slate-50,
+html:not(.light) .bg-slate-100,
+html:not(.light) .bg-zinc-50,
+html:not(.light) .bg-gray-50,
+html:not(.light) .bg-neutral-50,
+html:not(.light) .bg-slate-100\/40,
+html:not(.light) .bg-slate-50\/40,
+html:not(.light) [class*="bg-white/"] {
+  background-color: var(--bg-industrial-800) !important;
+}
+
+html:not(.light) .border-slate-200,
+html:not(.light) .border-slate-300,
+html:not(.light) .border-slate-100,
+html:not(.light) .border-zinc-200,
+html:not(.light) .border-gray-200 {
+  border-color: var(--input-border) !important;
+}
+
+html:not(.light) .text-slate-700,
+html:not(.light) .text-slate-800,
+html:not(.light) .text-slate-900,
+html:not(.light) .text-zinc-700,
+html:not(.light) .text-zinc-800,
+html:not(.light) .text-zinc-900,
+html:not(.light) .text-gray-700,
+html:not(.light) .text-gray-800,
+html:not(.light) .text-gray-900,
+html:not(.light) .text-neutral-700,
+html:not(.light) .text-neutral-800,
+html:not(.light) .text-neutral-900 {
+  color: var(--text-primary) !important;
+}
+
+html:not(.light) .text-slate-400,
+html:not(.light) .text-slate-500,
+html:not(.light) .text-slate-600,
+html:not(.light) .text-zinc-400,
+html:not(.light) .text-zinc-500,
+html:not(.light) .text-zinc-600,
+html:not(.light) .text-gray-400,
+html:not(.light) .text-gray-500,
+html:not(.light) .text-gray-600 {
+  color: var(--text-secondary) !important;
+}
+
+.light {
+  --bg-industrial-950: #f8fafc;
+  --bg-industrial-900: #ffffff;
+  --bg-industrial-800: #f1f5f9;
+  --bg-industrial-700: #e2e8f0;
+  --text-industrial-400: #334155;
+  --text-industrial-500: #64748b;
+  --bg-nardo: #f1f5f9;
+  --bg-workspace: #ffffff;
+  --card-border: rgba(15, 23, 42, 0.08);
+  --text-primary: #0f172a;
+  --text-secondary: #64748b;
+  --input-bg: #f8fafc;
+  --input-border: #e2e8f0;
+  --neon-indigo: 0 4px 12px rgba(79, 70, 229, 0.15);
+  --neon-cyan: 0 4px 12px rgba(6, 182, 212, 0.15);
+  --soft-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05);
+  /* Brand specific colors */
+  --brand-primary: #4f46e5;
+  --brand-hover: #4338ca;
+  --brand-shadow: rgba(79, 70, 229, 0.15);
+}
+
+@layer base {
+  body {
+    @apply bg-industrial-950 text-industrial-400 font-sans antialiased selection:bg-indigo-500/30;
+    color: var(--text-industrial-400);
+  }
+
+  html.rtl,
+  html.rtl * {
+    font-family: "Cairo", "Inter", ui-sans-serif, system-ui, sans-serif !important;
+  }
+
+  html.rtl .font-mono,
+  html.rtl .font-mono * {
+    font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace !important;
+  }
+
+  .shadow-2xl, .shadow-xl {
+    box-shadow: var(--soft-shadow) !important;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-black tracking-tight uppercase;
+    color: var(--text-primary);
+  }
+  
+  .text-white, 
+  .text-slate-50, .text-zinc-50, .text-gray-50, .text-neutral-50, 
+  .text-slate-100, .text-zinc-100, .text-gray-100, .text-neutral-100, 
+  .text-slate-200, .text-zinc-200, .text-gray-200, .text-neutral-200, 
+  .text-slate-800, .text-zinc-800, .text-gray-800, .text-neutral-800, 
+  .text-slate-900, .text-zinc-900, .text-gray-900, .text-neutral-900, 
+  .text-white\/90 {
+    color: var(--text-primary) !important;
+  }
+  
+  .text-white\/40, .text-white\/50, .text-white\/60 {
+    color: var(--text-secondary) !important;
+  }
+  
+  .text-white\/10, .text-white\/20, .text-white\/30 {
+    color: var(--text-industrial-500) !important;
+    opacity: 0.6;
+  }
+  
+  .text-slate-300, .text-zinc-300, .text-gray-300, .text-neutral-300 {
+    color: var(--text-secondary) !important;
+  }
+  
+  .text-slate-400, .text-zinc-400, .text-gray-400, .text-neutral-400, 
+  .text-slate-500, .text-zinc-500, .text-gray-500, .text-neutral-500 {
+    color: var(--text-secondary) !important;
+  }
+
+  .text-slate-600, .text-zinc-600, .text-gray-600, .text-neutral-600, 
+  .text-slate-700, .text-zinc-700, .text-gray-700, .text-neutral-700 {
+    color: var(--text-industrial-400) !important;
+  }
+  
+  .border-slate-800\/40, .border-slate-800, .border-industrial-800, .border-slate-700\/50, .border-white\/5, .border-white\/10 {
+    border-color: var(--card-border) !important;
+  }
+
+  .bg-workspace, .bg-industrial-900, .bg-industrial-950, .bg-nardo, .bg-slate-950 {
+    background-color: var(--bg-workspace) !important;
+  }
+  
+  .bg-industrial-800, .bg-slate-900, .bg-slate-900\/60, .bg-slate-800\/40, .bg-slate-800, .bg-slate-950\/50, .bg-slate-900\/40 {
+    background-color: var(--bg-industrial-800) !important;
+  }
+  
+  .bg-white\/5, .bg-white\/10 {
+    background-color: var(--input-bg) !important;
+  }
+  
+  .border-white\/5, .border-white\/10 {
+    border-color: var(--input-border) !important;
+  }
+  
+  .placeholder-white\/20::placeholder, .placeholder-slate-500::placeholder, .placeholder-white\/10::placeholder {
+    color: var(--text-industrial-500) !important;
+    opacity: 0.5;
+  }
+
+  input::placeholder, textarea::placeholder {
+    color: var(--text-industrial-500) !important;
+    opacity: 0.5;
+  }
+
+  input, select, textarea {
+    color: var(--text-primary);
+  }
+
+  /* Force table inheritance */
+  table {
+    @apply text-industrial-400;
+  }
+
+  th {
+    @apply font-black text-industrial-500 uppercase tracking-widest text-[10px] p-4;
+  }
+
+  /* Modern Scrollbar Global Styles for Dark Theme */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--bg-industrial-700) transparent;
+  }
+
+  /* Chrome, Edge, and Safari */
+  *::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background-color: var(--bg-industrial-700);
+    border-radius: 10px;
+    transition: background-color 0.2s;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: var(--text-industrial-400);
+  }
+}
+
+@layer components {
+  .industrial-card {
+    @apply bg-industrial-900 border border-industrial-800 rounded-3xl shadow-2xl shadow-black/50 overflow-hidden;
+  }
+
+  .industrial-input {
+    @apply bg-industrial-800 border border-industrial-700 rounded-2xl p-4 outline-none transition-all placeholder:text-industrial-500 font-mono text-sm;
+    color: var(--text-primary);
+  }
+  .industrial-input:focus {
+    border-color: var(--brand-primary) !important;
+    box-shadow: 0 0 0 2px var(--brand-shadow) !important;
+  }
+
+  .industrial-button-primary {
+    background-color: var(--brand-primary) !important;
+    color: #ffffff !important;
+    font-weight: 900 !important;
+    padding-top: 1rem !important;
+    padding-bottom: 1rem !important;
+    padding-left: 2rem !important;
+    padding-right: 2rem !important;
+    border-radius: 1rem !important;
+    transition: all 0.2s ease-in-out !important;
+    box-shadow: 0 10px 15px -3px var(--brand-shadow), 0 4px 6px -4px var(--brand-shadow) !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.1em !important;
+    font-size: 0.75rem !important;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+  }
+  .industrial-button-primary:hover:not(:disabled) {
+    background-color: var(--brand-hover) !important;
+    transform: translateY(-1px);
+  }
+  .industrial-button-primary:active:not(:disabled) {
+    transform: translateY(1px);
+  }
+  .industrial-button-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+  /* Specific containers that should always show scrollbar if content overflows */
+  .overflow-y-auto, .overflow-x-auto, .overflow-auto {
+    scrollbar-gutter: stable;
+  }
+
+  /* Support for dark mode if implemented via class */
+  .dark *::-webkit-scrollbar-thumb {
+    background-color: #475569;
+  }
+  
+  .dark *::-webkit-scrollbar-thumb:hover {
+    background-color: #64748b;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background-color: #334155;
+    border-radius: 20px;
+    border: 3px solid transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background-color: #475569;
+  }
+
+@layer base {
+  /* Scanner library overrides */
+  #camera-reader-main video {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: cover !important;
+    border-radius: inherit !important;
+  }
+}

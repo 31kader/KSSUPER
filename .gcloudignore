@@ -1,0 +1,19 @@
+# This file instructs gcloud to omit files and directories when uploading source.
+.gcloudignore
+
+# Eat standard gitignore
+.gitignore
+
+# Folders to completely ignore
+node_modules/
+dist/
+dist_electron/
+out/
+.cache/
+.playwright/
+.git/
+.github/
+.ipynb_checkpoints/
+*.log
+.env*
+!.env.example
