@@ -47,7 +47,31 @@ export function QuickAddProductModal({
       setLocation('');
       setErrorMsg(null);
     }
-  }, [isOpen]);
+    
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!isOpen) return;
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+      } else if (e.key === 'Enter') {
+        // Automatically validate when Enter is pressed globally in this modal
+        // But only if we aren't already submitting and if we have required fields
+        const target = e.target as HTMLElement;
+        const isSubmitButton = target.tagName === 'BUTTON' && (target as HTMLButtonElement).type === 'submit';
+        
+        // Let native form submission handle it if they're explicitly pressing the button
+        if (!isSubmitButton) {
+           e.preventDefault();
+           if (name && price && !isSaving) {
+             const form = document.getElementById('quick-add-form') as HTMLFormElement;
+             if (form) form.requestSubmit();
+           }
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose, name, price, isSaving]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -129,7 +153,7 @@ export function QuickAddProductModal({
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form id="quick-add-form" onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1">
             <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 ml-1">Nom du produit</label>
             <input 
@@ -192,14 +216,14 @@ export function QuickAddProductModal({
               onClick={onClose}
               className="flex-1 py-4 text-sm font-black uppercase tracking-wider"
             >
-              Annuler
+              Annuler (Échap)
             </Button>
             <Button 
               type="submit" 
-              disabled={isSaving}
+              disabled={isSaving || !name || !price}
               className="flex-1 py-4 text-sm font-black uppercase tracking-wider bg-indigo-600 shadow-lg shadow-indigo-200"
             >
-              {isSaving ? 'Envoi...' : 'Ajouter'}
+              {isSaving ? 'Envoi...' : 'Ajouter (Entrée)'}
             </Button>
           </div>
         </form>

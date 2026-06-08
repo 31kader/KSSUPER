@@ -183,6 +183,16 @@ html:not(.light) .text-gray-600 {
 }
 
 @layer base {
+  @keyframes item-pop {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.02); }
+    100% { transform: scale(1); }
+  }
+
+  .animate-item-pop {
+    animation: item-pop 0.2s ease-out;
+  }
+
   body {
     @apply bg-industrial-950 text-industrial-400 font-sans antialiased selection:bg-indigo-500/30;
     color: var(--text-industrial-400);

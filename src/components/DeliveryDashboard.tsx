@@ -1,8 +1,8 @@
 import { DEFAULT_PERMISSIONS } from '../constants';
 import React, { useState, useMemo, memo, useEffect, useRef, useDeferredValue } from 'react';
 import { Package, Tag, RefreshCw, LayoutGrid, Plus, FileSpreadsheet, Upload, ShoppingBag, AlertTriangle, Zap, Info, Search, Filter, Scan, LayoutList, Layers, Truck, ArrowUpDown, Award, Calendar, FolderTree, AlertCircle, TrendingDown, ShieldCheck, RotateCcw, Check, Printer, Copy, PackageOpen, Trash2, ChevronUp, BarcodeIcon, ShoppingCart, Eye, X, MessageCircle, Phone, MapPin, Navigation, Edit, Clock, Mail, Percent, DollarSign, Star, Palette, FileText, AlignLeft, Shield, UserCog, Link2, MapIcon, Brain, Database, ArrowRight, CreditCard, Banknote, Minus, UserPlus, ChevronDown, Users, ArrowUpRight, ArrowDownRight, LogOut, Bell, TrendingUp, History, EyeOff, LogIn, Store, Gift, Wallet, Edit2, MessageSquare, CheckCircle2 } from 'lucide-react';
-import { rtdb, ref, get, rtdbQuery, orderByChild, equalTo, push, set, update, child } from '../firebase';
-import { auth, handleFirestoreError, OperationType } from '../firebase';
+import { rtdb, ref, get, rtdbQuery, orderByChild, equalTo, push, set, update, child } from '../database';
+import { auth, handleFirestoreError, OperationType } from '../database';
 import { Button, Card, Modal, ConfirmDialog, BlurCard, SortableHeader } from './ui';
 import { Product, Category, Brand, StockAdjustment, CompanySettings, SupplierSync, Supplier, Purchase, Transaction, OnlineOrder, Employee, Customer, CartItem, ProductReturn, RolePermissions, Promotion, Voucher, PurchaseOrder, POSSession } from '../types';
 import { cn, logAction, safeDate, exportToExcel, getHierarchicalCategories, formatSafe, exportToCSV, generateUniqueId, isLocked, formatProductStock, calculateItemPrice } from '../lib/utils';

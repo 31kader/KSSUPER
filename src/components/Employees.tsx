@@ -11,7 +11,7 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import bcrypt from 'bcryptjs';
 import { supabase } from '../supabase';
-import { auth, handleFirestoreError, OperationType } from '../firebase';
+import { auth, handleFirestoreError, OperationType } from '../database';
 import { 
   Employee, Transaction, AttendanceRecord, AdvanceRecord, 
   CompanySettings, UserProfile, RolePermissions 

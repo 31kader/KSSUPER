@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { auth, rtdb, ref, get, set, push, child, rtdbQuery, orderByChild, equalTo, handleFirestoreError, OperationType } from '../firebase';
+import { auth, rtdb, ref, get, set, push, child, rtdbQuery, orderByChild, equalTo, handleFirestoreError, OperationType } from '../database';
 import { Employee } from '../types';
 
 export function useStaffManagement() {

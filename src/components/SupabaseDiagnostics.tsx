@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase, isSupabaseConfigured } from '../supabase';
-import { initAndSyncSupabase } from '../firebase';
+import { initAndSyncSupabase } from '../database';
 import { del as idbDel } from 'idb-keyval';
 import { Button, Card } from './ui';
 import { 

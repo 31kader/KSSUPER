@@ -3,7 +3,7 @@ import {
   auth, googleProvider, handleFirestoreError, OperationType, db, collection, 
   getDoc, getDocs, doc, setDoc, updateDoc, deleteDoc, firestoreQuery as query, where,
   onAuthStateChanged, signInWithPopup, User 
-} from '../firebase';
+} from '../database';
 import { UserProfile, Employee } from '../types';
 import bcrypt from 'bcryptjs';
 

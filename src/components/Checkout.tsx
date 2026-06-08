@@ -1237,6 +1237,12 @@ export const Checkout = memo(function Checkout({
           </div>
 
           {/* Cart Items List */}
+          {cart.length > 0 && (
+            <div className="px-5 py-3 bg-slate-900/60 border-b border-slate-800/40 flex justify-between items-center text-[11px] font-black uppercase tracking-widest text-slate-400">
+              <span className="flex items-center gap-2"><LayoutList size={14} className="opacity-50"/> Produits uniques : <span className="text-white">{cart.length}</span></span>
+              <span className="flex items-center gap-2"><Package size={14} className="opacity-50"/> Total articles : <span className="text-white">{cart.reduce((sum, item) => sum + item.quantity, 0)}</span></span>
+            </div>
+          )}
           <div className="flex-1 overflow-y-auto custom-scrollbar bg-workspace/10">
             {cart.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center text-white/40 p-12 text-center max-w-sm mx-auto">
@@ -1248,19 +1254,19 @@ export const Checkout = memo(function Checkout({
               </div>
             ) : (
               <div className="p-4 space-y-3">
-                <AnimatePresence>
-                  {cart.map((item: CartItem, idx: number) => (
-                    <motion.div 
-                      initial={{ opacity: 0, x: -20, scale: 0.95 }}
-                      animate={{ opacity: 1, x: 0, scale: 1 }}
-                      exit={{ opacity: 0, scale: 0.9, x: -50, transition: { duration: 0.2 } }}
-                      key={item.cartItemId || `pos-item-${idx}`} 
-                      className={cn(
-                        "flex items-center gap-3 p-3 rounded-2xl bg-slate-900/40 border transition-all group relative overflow-hidden",
-                        selectedItemId === item.id ? "border-amber-500 bg-amber-500/10 shadow-[0_0_15px_rgba(245,158,11,0.25)] animate-pulse" : "border-slate-800/40 hover:border-slate-700/60"
-                      )}
-                      onClick={() => setSelectedItemId(item.id)}
-                    >
+                  {cart.map((item: CartItem, idx: number) => {
+                    const isLast = idx === cart.length - 1;
+                    const isSelected = selectedItemId === item.id;
+                    
+                    return (
+                      <div 
+                        key={`${item.cartItemId || item.id}-${item.quantity}`} 
+                        className={cn(
+                          "flex items-center gap-3 p-3 rounded-2xl bg-slate-900/40 border group relative overflow-hidden",
+                          isLast || isSelected ? "border-amber-500 bg-amber-500/10 shadow-[0_0_15px_rgba(245,158,11,0.2)] ring-1 ring-amber-500/50" : "border-slate-800/40 hover:border-slate-700/60"
+                        )}
+                        onClick={() => setSelectedItemId(item.id)}
+                      >
                     <div className="w-12 h-12 bg-slate-800 rounded-xl flex-shrink-0 overflow-hidden border border-slate-700/50 shadow-inner group-hover:scale-105 transition-transform duration-300">
                       {item.imageUrl || products.find((p: Product) => p.id === item.id)?.imageUrl ? (
                         <SafeImage 
@@ -1377,9 +1383,9 @@ export const Checkout = memo(function Checkout({
                         </div>
                       </div>
                     </div>
-                  </motion.div>
-                ))}
-                </AnimatePresence>
+                      </div>
+                    );
+                  })}
                 <div ref={cartEndRef} />
               </div>
             )}
@@ -1971,7 +1977,10 @@ export const Checkout = memo(function Checkout({
                 </div>
               )}
               <div className="flex justify-between text-emerald-400 font-black text-3xl pt-2 border-t border-slate-800/60 items-center tracking-tighter">
-                <span className="text-sm opacity-80 text-emerald-500 uppercase tracking-wider font-extrabold">TOTAL</span>
+                <span className="text-sm opacity-80 text-emerald-500 uppercase tracking-wider font-extrabold flex flex-col">
+                  TOTAL
+                  <span className="text-[9px] text-emerald-600 tracking-widest font-bold mt-0.5">{cart.reduce((sum, item) => sum + item.quantity, 0)} {cart.reduce((sum, item) => sum + item.quantity, 0) > 1 ? 'articles' : 'article'}</span>
+                </span>
                 <div className="text-right">
                   {(selectedCustomer && total > 0) && (
                     <div className="text-[9px] font-black text-amber-500 mb-0.5 flex items-center justify-end gap-1 uppercase tracking-widest animate-pulse">

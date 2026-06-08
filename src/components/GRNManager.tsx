@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useDeferredValue } from 'react';
-import { rtdb, ref, get, push, update, child, runRtdbTransaction } from '../firebase';
+import { rtdb, ref, get, push, update, child, runRtdbTransaction } from '../database';
 import { Product } from '../types';
 import { Trash2, Plus, Save, CheckCircle, Search, Package, Check, Edit, RefreshCw, AlertTriangle, CheckCircle2, Camera } from 'lucide-react';
 import { cn, generateUniqueId } from '../lib/utils';

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { get as idbGet, set as idbSet } from 'idb-keyval';
-import { rtdb, ref, get, child, rtdbQuery, orderByChild, startAt, auth, onValue } from '../firebase';
+import { rtdb, ref, get, child, rtdbQuery, orderByChild, startAt, auth, onValue } from '../database';
 import { supabase, isSupabaseConfigured } from '../supabase';
 import { 
   CompanySettings, Product, Category, Brand, Transaction, Promotion, Customer, Supplier, Employee,

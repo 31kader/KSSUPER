@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Minus, Plus } from 'lucide-react';
 import { format } from 'date-fns';
-import { db, rtdb, ref, get, set, remove, child, update, push, handleFirestoreError, OperationType } from '../firebase';
+import { db, rtdb, ref, get, set, remove, child, update, push, handleFirestoreError, OperationType } from '../database';
 import { Product, CompanySettings, Transaction, ProductReturn, Customer } from '../types';
 import { cn, generateUniqueId, logAction } from '../lib/utils';
 import { Modal, Button } from './ui';

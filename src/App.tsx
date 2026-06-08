@@ -199,7 +199,7 @@ import {
   signInWithEmailAndPassword, signOut, signInWithPopup, onAuthStateChanged,
   createUserWithEmailAndPassword,
   onSyncUpdate
-} from './firebase';
+} from './database';
 import { isSupabaseConfigured } from './supabase';
 import { 
   LineChart, 

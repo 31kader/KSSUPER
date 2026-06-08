@@ -443,6 +443,7 @@ export const printLabel = (p: Product, settings: CompanySettings) => {
       <head>
         <title>Étiquette - ${p.name}</title>
         <style>
+          @page { margin: 0; }
           * { box-sizing: border-box; }
           body { 
             margin: 0; 
@@ -524,6 +525,7 @@ export const printPurchaseOrder = (purchase: any, settings: CompanySettings) => 
         <title>Bon de Commande - ${purchase.supplierName}</title>
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
         <style>
+          @page { margin: 0; }
           body { font-family: 'Inter', sans-serif; padding: 40px; color: #000; }
           .header { display: flex; justify-content: space-between; margin-bottom: 40px; border-bottom: 4px solid #000; padding-bottom: 20px; }
           .company-info h1 { margin: 0; font-size: 32px; font-weight: 900; text-transform: uppercase; }
@@ -613,6 +615,7 @@ export const printReturn = (r: ProductReturn, settings: CompanySettings) => {
         <title>Reçu de Retour - #${r.id.slice(-6).toUpperCase()}</title>
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
         <style>
+          @page { margin: 0; }
           body { font-family: 'Inter', sans-serif; padding: 40px; color: #000; }
           .header { text-align: center; margin-bottom: 30px; border-bottom: 4px solid #000; padding-bottom: 20px; }
           .title { font-size: 32px; font-weight: 900; text-transform: uppercase; margin: 0; }
@@ -673,6 +676,7 @@ export const printPurchaseVoucher = (purchase: any, settings: CompanySettings) =
         <title>Bon de Réception - #${purchase.id.slice(-6).toUpperCase()}</title>
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
         <style>
+          @page { margin: 0; }
           body { font-family: 'Inter', sans-serif; padding: 40px; color: #000; }
           .header { text-align: center; margin-bottom: 30px; border-bottom: 4px solid #000; padding-bottom: 20px; }
           .title { font-size: 32px; font-weight: 900; text-transform: uppercase; margin: 0; }
@@ -734,6 +738,7 @@ export const printHistory = (filteredPurchases: Purchase[], settings: CompanySet
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
         <style>
+          @page { margin: 0; }
           * { box-sizing: border-box; }
           body { 
             font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif !important; 

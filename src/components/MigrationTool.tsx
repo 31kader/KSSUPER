@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { 
   auth, db, collection, getDocs, 
   rtdb, ref, update, set, child
-} from '../firebase';
+} from '../database';
 import { Button, Card } from './ui';
 import { Database, AlertTriangle, CheckCircle2, Loader2, ArrowRight } from 'lucide-react';
 import { toast } from 'sonner';

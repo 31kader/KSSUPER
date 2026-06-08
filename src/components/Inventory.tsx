@@ -19,7 +19,7 @@ import { StockAdjustmentModal } from './StockAdjustmentModal';
 import { DuplicateSKUModal } from './DuplicateSKUModal';
 import { ImportModal } from './ImportModal';
 import { ProductFormModal } from './ProductFormModal';
-import { LabelPrinter, SingleLabel, getCommonStyles, getModelDimensions } from './LabelPrinter';
+import { LabelPrinter, SingleLabel, getCommonStyles } from './LabelPrinter';
 import { SupplierSyncManager } from './SupplierSyncManager';
 import { StockHistory } from './StockHistory';
 import { BarcodeScanner } from './BarcodeScanner';
@@ -256,7 +256,7 @@ export function Inventory({ products, categories, brands, stockAdjustments, user
   const [mapping, setMapping] = useState<Record<string, string>>({});
 
   // Configuration de la pagination pour la performance
-  const [pageSize, setPageSize] = useState(50);
+  const [pageSize, setPageSize] = useState(25);
   const [currentPage, setCurrentPage] = useState(1);
   const [isMassDeleting, setIsMassDeleting] = useState(false);
   const [massDeleteProgress, setMassDeleteProgress] = useState(0);
@@ -643,7 +643,7 @@ export function Inventory({ products, categories, brands, stockAdjustments, user
 
       return matchesSearch && matchesCategory && matchesSupplier && matchesStatus && matchesStock && matchesDate && matchesPos && matchesBrand;
     });
-  }, [products, search, selectedCategories, selectedSupplier, selectedBrand, statusFilter, stockLevelFilter, dateRange, posVisibilityFilter]);
+  }, [products, deferredSearch, selectedCategories, categories, selectedSupplier, selectedBrand, statusFilter, stockLevelFilter, dateRange, posVisibilityFilter]);
 
   const sortedProducts = useMemo(() => {
     let sortableProducts = [...filteredProducts];
@@ -755,15 +755,15 @@ export function Inventory({ products, categories, brands, stockAdjustments, user
   const totalPages = Math.ceil(sortedProducts.length / pageSize);
 
   // Row Renderer for Virtualized List
-  const ProductRow = memo(({ index, style }: { index: number; style: React.CSSProperties }) => {
-    const product = sortedProducts[index];
+  const ProductRow = useMemo(() => memo(({ index, style, sortedProducts: listProducts }: { index: number; style: React.CSSProperties; sortedProducts?: Product[] }) => {
+    const product = (listProducts || sortedProducts)[index];
     if (!product) return null;
 
     const margin = product.price - (product.costPrice || 0);
     const isLowStock = product.stock <= (product.minStock || 5);
 
     return (
-      <div style={style} className="px-6">
+      <div style={{ ...style, top: 0 }} className="px-6">
         <motion.div 
           initial={false}
           className={cn(
@@ -862,13 +862,16 @@ export function Inventory({ products, categories, brands, stockAdjustments, user
 
                 <div className="flex items-center gap-1.5 pl-4 ml-4 border-l border-white/5" onClick={(e) => e.stopPropagation()}>
                   {[
-                    { icon: Edit, onClick: () => { setEditingProduct(product); setIsProductModalOpen(true); }, color: 'text-indigo-400 hover:bg-indigo-500/20' },
-                    { icon: RefreshCw, onClick: () => { setSelectedProductForAdjustment(product); setIsAdjustmentModalOpen(true); }, color: 'text-emerald-400 hover:bg-emerald-500/20' },
-                    { icon: Trash2, onClick: () => handleDelete(product.id), color: 'text-rose-400 hover:bg-rose-500/20', danger: true }
+                    { icon: Printer, onClick: () => printQuickLabel(product), color: 'text-indigo-400 hover:bg-indigo-500/20', title: 'Impression Rapide' },
+                    { icon: Edit, onClick: () => { setEditingProduct(product); setIsProductModalOpen(true); }, color: 'text-indigo-400 hover:bg-indigo-500/10', title: 'Modifier' },
+                    { icon: Copy, onClick: () => { setEditingProduct({...product, id: undefined, name: product.name + " (Copie)"}); setIsProductModalOpen(true); }, color: 'text-amber-400 hover:bg-amber-500/20', title: 'Copier' },
+                    { icon: RefreshCw, onClick: () => { setSelectedProductForAdjustment(product); setIsAdjustmentModalOpen(true); }, color: 'text-emerald-400 hover:bg-emerald-500/20', title: 'Ajuster' },
+                    { icon: Trash2, onClick: () => handleDelete(product.id), color: 'text-rose-400 hover:bg-rose-500/20', danger: true, title: 'Supprimer' }
                   ].map((btn, i) => (
                     <button 
                       key={i}
                       onClick={btn.onClick}
+                      title={(btn as any).title}
                       className={cn(
                         "w-9 h-9 flex items-center justify-center rounded-xl transition-all active:scale-90 flex-shrink-0 bg-white/5",
                         btn.color
@@ -881,7 +884,7 @@ export function Inventory({ products, categories, brands, stockAdjustments, user
         </motion.div>
       </div>
     );
-  });
+  }), [sortedProducts, categories, brands, settings, selectedProductIds, isDeletingId, isMassDeleting, showMarginExtremes, marginExtremes, setEditingProduct, setIsProductModalOpen, toggleSelectProduct, setEnlargedImage, handleDelete, setSelectedProductForAdjustment, setIsAdjustmentModalOpen]);
 
   const toggleCategory = (cat: string) => {
     setSelectedCategories(prev => 
@@ -1195,15 +1198,6 @@ export function Inventory({ products, categories, brands, stockAdjustments, user
     document.body.removeChild(link);
   };
 
-  const [labelModel, setLabelModel] = useState<string>('thermal');
-  const [labelStyle, setLabelStyle] = useState<'standard' | 'elegant' | 'promo' | 'compact' | 'modern' | 'minimalist' | 'industrial' | 'eco'>('standard');
-  const [quickLabelOptions, setQuickLabelOptions] = useState({
-    type: 'barcode' as 'qr' | 'barcode',
-    includeDate: false,
-    includeCompany: true,
-    includeImage: true
-  });
-
   const handlePrintLabel = (product: Product) => {
     setSelectedProductForLabel(product);
   };
@@ -1218,22 +1212,14 @@ export function Inventory({ products, categories, brands, stockAdjustments, user
       return;
     }
     
-    const isA4 = labelModel.startsWith('a4');
-    const dims = getModelDimensions(labelModel);
-    const pageSize = isA4 ? 'A4' : `${dims.width} ${dims.height}`;
-    
     const html = `
       <!DOCTYPE html>
       <html>
         <head>
-          <title>Etiquette</title>
+          <title>Impression d'Étiquettes</title>
           <style>
-             ${getCommonStyles()}
-             @page { 
-               size: ${pageSize} portrait; 
-               margin: 0; 
-             }
-             body { margin: 0; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            ${getCommonStyles()}
+            body { margin: 0; background: #fff; }
           </style>
         </head>
         <body>
@@ -1242,7 +1228,7 @@ export function Inventory({ products, categories, brands, stockAdjustments, user
             setTimeout(() => {
               window.print();
               setTimeout(() => { window.close(); }, 500);
-            }, 500);
+            }, 600);
           </script>
         </body>
       </html>
@@ -1945,19 +1931,52 @@ export function Inventory({ products, categories, brands, stockAdjustments, user
             <div className="flex-1 flex flex-col min-h-0 min-w-0">
                <div className="flex-1 min-h-[600px] h-[calc(100vh-320px)] bg-black/10 rounded-[3rem] border border-white/5 relative overflow-hidden backdrop-blur-sm group/catalog">
                 {sortedProducts.length > 0 ? (
-                  <div className="virtual-catalog-container h-full pt-4">
+                  <div className="virtual-catalog-container flex flex-col h-full min-h-0 pt-4 pb-4">
                     {/* Unified Virtualized Catalog Ready */}
+                    <div className="flex items-center gap-6 px-10 mb-4 text-[10px] font-black uppercase tracking-widest text-white/40">
+                       <div className="w-10"></div>
+                       <div className="w-14">Image</div>
+                       <div className="flex-1 cursor-pointer hover:text-white transition-colors" onClick={() => requestSort('name')}>Nom du Produit</div>
+                       <div className="w-48 hidden xl:block">Catégorie / Fns</div>
+
+                       <div className="w-24 flex flex-col items-end gap-1">
+                         <div className="cursor-pointer hover:text-white transition-colors" onClick={() => requestSort('margin')}>Prix / Marge</div>
+                         <button 
+                           onClick={() => setShowMarginExtremes(!showMarginExtremes)}
+                           className={cn("text-[9px] px-2 py-0.5 rounded border transition-all", showMarginExtremes ? "bg-indigo-500/50 text-white border-indigo-400" : "bg-white/5 text-white/30 border-white/10")}
+                         >
+                           Extrêmes
+                         </button>
+                       </div>
+                       <div className="w-32 text-right cursor-pointer hover:text-white transition-colors" onClick={() => requestSort('stock')}>Stock</div>
+                    </div>
                     {/* @ts-ignore */}
                     <List
-                      height={800} 
-                      width="100%"
-                      itemCount={sortedProducts.length}
-                      itemSize={104} 
-                      className="custom-scrollbar py-6"
-                    >
-                      {/* @ts-ignore */}
-                      {ProductRow}
-                    </List>
+                      style={{ height: '100%', width: '100%' }}
+                      rowCount={paginatedProducts.length}
+                      rowHeight={104}
+                      rowComponent={ProductRow as any}
+                      rowProps={{ sortedProducts: paginatedProducts } as any}
+                      className="custom-scrollbar py-0"
+                    />
+                    
+                    <div className="flex justify-center items-center gap-6 p-4 border-t border-white/5">
+                      <button 
+                        disabled={currentPage === 1}
+                        onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                        className="p-3 bg-white/5 disabled:opacity-30 text-white rounded-xl hover:bg-white/10 transition-all"
+                      >
+                         <ChevronLeft size={20} />
+                      </button>
+                      <span className="text-white/60 text-xs font-black tracking-widest uppercase">Page {currentPage} / {totalPages || 1}</span>
+                      <button 
+                         disabled={currentPage === totalPages || totalPages === 0}
+                         onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                         className="p-3 bg-white/5 disabled:opacity-30 text-white rounded-xl hover:bg-white/10 transition-all"
+                      >
+                         <ChevronRight size={20} />
+                      </button>
+                    </div>
                     
                     {/* Floating Stats Badge */}
                     <div className="absolute bottom-6 left-6 px-4 py-2 bg-indigo-600/90 backdrop-blur-md rounded-2xl border border-indigo-400/50 shadow-2xl flex items-center gap-3 transition-all duration-500 hover:scale-105 active:scale-95 group-hover/catalog:translate-y-0 translate-y-20">
@@ -2092,11 +2111,15 @@ export function Inventory({ products, categories, brands, stockAdjustments, user
                                   >
                                     <RefreshCw size={16} />
                                   </button>
-                                  <button onClick={() => { setSelectedProductForLabel(p); }} className="p-2 text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors" title="Choisir imprimer étiquette">
+                                  <button 
+                                    onClick={() => printQuickLabel(p)}
+                                    className="p-2 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-lg transition-colors"
+                                    title="Impression Rapide"
+                                  >
                                     <Printer size={16} />
                                   </button>
                                   <button onClick={() => { setEditingProduct(p); setIsProductModalOpen(true); }} className="p-2 text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors" title="Modifier">
-                                    <Plus size={16} />
+                                    <Edit size={16} />
                                   </button>
                                   <button 
                                     disabled={isDeletingId === p.id}
@@ -2255,190 +2278,9 @@ export function Inventory({ products, categories, brands, stockAdjustments, user
           title={`Impression Rapide - ${selectedProductForLabel.name}`}
           maxWidth="max-w-md"
         >
-          <div className="space-y-6">
-            <div className="grid grid-cols-2 gap-4">
-               <div>
-                 <label className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2 block">Orientation</label>
-                 <select 
-                    value={labelModel}
-                    onChange={(e) => setLabelModel(e.target.value as any)}
-                    className="w-full p-3 bg-slate-50 rounded-xl border border-slate-200 font-bold text-sm outline-none focus:ring-2 focus:ring-indigo-500"
-                  >
-                    <optgroup label="Gprinter GP-3150TN Optimisé">
-                      <option value="gp3150_80x50">GP-3150TN (80x50mm)</option>
-                      <option value="gp3150_60x40">GP-3150TN (60x40mm)</option>
-                      <option value="gp3150_40x30">GP-3150TN (40x30mm)</option>
-                    </optgroup>
-                    <optgroup label="Autres Thermiques">
-                      <option value="thermal">Horizontal (80x50mm)</option>
-                      <option value="thermal_v">Portrait (50x80mm) ↑</option>
-                      <option value="label">Petit Horiz. (50x30mm)</option>
-                      <option value="label_v">Petit Port. (30x50mm) ↑</option>
-                    </optgroup>
-                  </select>
-               </div>
-               <div>
-                  <label className="text-[10px] font-black text-white/40 uppercase tracking-widest mb-3 block pl-1">Style Design</label>
-                  <select 
-                    value={labelStyle}
-                    onChange={(e) => setLabelStyle(e.target.value as any)}
-                    className="w-full p-4 bg-white/5 border border-white/10 rounded-2xl font-black text-sm text-white outline-none focus:ring-2 focus:ring-indigo-500/50 appearance-none cursor-pointer"
-                  >
-                    <option value="standard">Standard</option>
-                    <option value="elegant">Élégant</option>
-                    <option value="promo">Promo</option>
-                    <option value="modern">Moderne</option>
-                    <option value="industrial">Industriel</option>
-                    <option value="eco">Éco</option>
-                  </select>
-               </div>
-            </div>
-
-            <div className="space-y-4 bg-white/5 p-6 rounded-3xl border border-white/10 shadow-inner">
-               <label className="text-[10px] font-black text-white/20 uppercase tracking-[0.2em] block mb-2">Options de contenu</label>
-               
-               <div className="flex items-center justify-between">
-                 <span className="text-xs font-black text-white/60 uppercase tracking-widest">Type de code</span>
-                 <div className="flex bg-black/40 p-1 rounded-xl border border-white/5">
-                   <button 
-                     onClick={() => setQuickLabelOptions(prev => ({ ...prev, type: 'barcode' }))}
-                     className={cn("px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all", quickLabelOptions.type === 'barcode' ? "bg-indigo-600 text-white shadow-neon-indigo" : "text-white/20 hover:text-white/40")}
-                   >BARRE</button>
-                   <button 
-                     onClick={() => setQuickLabelOptions(prev => ({ ...prev, type: 'qr' }))}
-                     className={cn("px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all", quickLabelOptions.type === 'qr' ? "bg-indigo-600 text-white shadow-neon-indigo" : "text-white/20 hover:text-white/40")}
-                   >QR</button>
-                 </div>
-               </div>
-
-               <div className="flex items-center justify-between">
-                 <span className="text-xs font-black text-white/60 uppercase tracking-widest">Inclure la date</span>
-                 <button 
-                    onClick={() => setQuickLabelOptions(prev => ({ ...prev, includeDate: !prev.includeDate }))}
-                    className={cn("w-12 h-6 rounded-full transition-all relative p-1", quickLabelOptions.includeDate ? "bg-emerald-500" : "bg-white/10")}
-                 >
-                   <div className={cn("w-4 h-4 bg-white rounded-full transition-all shadow-md", quickLabelOptions.includeDate ? "translate-x-6" : "translate-x-0")} />
-                 </button>
-               </div>
-
-               <div className="flex items-center justify-between">
-                 <span className="text-xs font-black text-white/60 uppercase tracking-widest">Nom entreprise</span>
-                 <button 
-                    onClick={() => setQuickLabelOptions(prev => ({ ...prev, includeCompany: !prev.includeCompany }))}
-                    className={cn("w-12 h-6 rounded-full transition-all relative p-1", quickLabelOptions.includeCompany ? "bg-indigo-500" : "bg-white/10")}
-                 >
-                   <div className={cn("w-4 h-4 bg-white rounded-full transition-all shadow-md", quickLabelOptions.includeCompany ? "translate-x-6" : "translate-x-0")} />
-                 </button>
-               </div>
-
-               <div className="flex items-center justify-between">
-                 <span className="text-xs font-black text-white/60 uppercase tracking-widest">Image des produits</span>
-                 <button 
-                    onClick={() => setQuickLabelOptions(prev => ({ ...prev, includeImage: !prev.includeImage }))}
-                    className={cn("w-12 h-6 rounded-full transition-all relative p-1", quickLabelOptions.includeImage ? "bg-emerald-500" : "bg-white/10")}
-                 >
-                   <div className={cn("w-4 h-4 bg-white rounded-full transition-all shadow-md", quickLabelOptions.includeImage ? "translate-x-6" : "translate-x-0")} />
-                 </button>
-               </div>
-            </div>
-            
-            <div className="pt-2">
-               <Button onClick={() => printQuickLabel(selectedProductForLabel)} className="w-full h-12 gap-2 text-lg font-black shadow-xl shadow-indigo-100">
-                 <Printer size={20} /> IMPRIMER L'ÉTIQUETTE
-               </Button>
-               <p className="text-center text-[10px] text-slate-400 mt-4 uppercase font-bold tracking-widest">Une nouvelle fenêtre s'ouvrira pour l'impression</p>
-            </div>
-          </div>
         </Modal>
       )}
 
-      <Modal 
-        isOpen={isBarcodeGenOpen} 
-        onClose={() => setIsBarcodeGenOpen(false)} 
-        title="Générateur de Codes-Barres"
-        maxWidth="max-w-4xl"
-      >
-        <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-slate-500 dark:text-slate-400">Sélectionnez les produits pour générer et imprimer des étiquettes.</p>
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-slate-400 dark:text-slate-500">Format:</span>
-                <select 
-                  className="p-1 px-2 text-xs border border-slate-200 dark:border-slate-700 rounded bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500"
-                  value={labelModel}
-                  onChange={(e) => setLabelModel(e.target.value as any)}
-                >
-                  <optgroup label="Gprinter GP-3150TN">
-                    <option value="gp3150_80x50">GP 80x50</option>
-                    <option value="gp3150_60x40">GP 60x40</option>
-                    <option value="gp3150_40x30">GP 40x30</option>
-                  </optgroup>
-                  <optgroup label="Générique">
-                    <option value="thermal">80mm</option>
-                    <option value="label">Étiquette</option>
-                    <option value="a4">A4</option>
-                  </optgroup>
-                </select>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-slate-400 dark:text-slate-500">Style:</span>
-                <select 
-                  className="p-1 px-2 text-xs border border-slate-200 dark:border-slate-700 rounded bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 outline-none focus:ring-2 focus:ring-amber-500"
-                  value={labelStyle}
-                  onChange={(e) => setLabelStyle(e.target.value as any)}
-                >
-                  <option value="standard">Standard</option>
-                  <option value="elegant">Élégant</option>
-                  <option value="promo">Promo</option>
-                  <option value="compact">Compact</option>
-                  <option value="pro">Professionnel</option>
-                </select>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-[400px]">
-            <div className="flex flex-col gap-4 overflow-hidden">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" size={18} />
-                <input 
-                  type="text" 
-                  placeholder="Rechercher un produit..." 
-                  className="w-full pl-10 pr-4 py-2 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                />
-              </div>
-              <div className="flex-1 overflow-y-auto space-y-2 pr-2">
-                {filteredProducts.map(p => (
-                  <button 
-                    key={p.id}
-                    onClick={() => handlePrintLabel(p)}
-                    className="w-full p-3 flex items-center justify-between bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl hover:border-indigo-200 dark:hover:border-indigo-500 hover:bg-indigo-50/30 dark:hover:bg-indigo-900/20 transition-all text-left group"
-                  >
-                    <div>
-                      <p className="text-sm font-bold text-slate-800 dark:text-slate-100">{p.name}</p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">{p.sku || 'Pas de SKU'}</p>
-                    </div>
-                    <Printer size={16} className="text-slate-300 dark:text-slate-600 group-hover:text-indigo-500 dark:group-hover:text-indigo-400" />
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-700 p-6 flex flex-col items-center justify-center text-center space-y-4">
-              <div className="w-48 h-48 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 flex items-center justify-center p-4">
-                <BarcodeIcon size={64} className="text-slate-200 dark:text-slate-700" />
-              </div>
-              <div>
-                <h4 className="font-bold text-slate-800 dark:text-slate-100">Aperçu de l'étiquette</h4>
-                <p className="text-sm text-slate-500 dark:text-slate-400 max-w-[200px]">Cliquez sur un produit à gauche pour générer et imprimer son étiquette.</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </Modal>
 
       {/* Bulk category / brand update modal */}
       {isBulkUpdateModalOpen && (
@@ -3018,28 +2860,11 @@ export function Inventory({ products, categories, brands, stockAdjustments, user
       </AnimatePresence>
 
       <div className="hidden">
-        <div ref={quickPrintRef} className="print-root">
-          <style dangerouslySetInnerHTML={{ __html: `
-            ${getCommonStyles()}
-            @page { size: ${getModelDimensions(labelModel).width} ${getModelDimensions(labelModel).height}; margin: 0; }
-            body { margin: 0; padding: 0; }
-            @media print { body, html { margin: 0; padding: 0; } }
-          ` }} />
+        <div ref={quickPrintRef}>
           {selectedProductForLabel && (
             <SingleLabel 
-              label={{
-                name: selectedProductForLabel.name,
-                price: selectedProductForLabel.price?.toFixed(2) || '0.00',
-                sku: selectedProductForLabel.sku || selectedProductForLabel.id,
-                currency: settings.currency,
-                type: quickLabelOptions.type,
-                date: quickLabelOptions.includeDate ? new Date().toLocaleDateString('fr-FR') : null,
-                company: quickLabelOptions.includeCompany ? settings.name : null,
-                imageUrl: selectedProductForLabel.imageUrl || selectedProductForLabel.image || null
-              }} 
-              labelStyle={labelStyle} 
-              labelModel={labelModel} 
-              includeImage={quickLabelOptions.includeImage}
+              product={selectedProductForLabel} 
+              currency={settings.currency} 
             />
           )}
         </div>

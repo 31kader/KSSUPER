@@ -111,6 +111,50 @@ const TABLE_COLUMNS: Record<string, string[]> = {
   ],
   users: [
     'id', 'uid', 'email', 'display_name', 'password_hash', 'role', 'join_date'
+  ],
+  settings: [
+    'id', 'name', 'logo_url', 'address', 'phone', 'email', 'tax_number', 'receipt_template', 'label_template', 
+    'currency', 'tax_rate', 'loyalty_points_per_currency_unit', 'loyalty_point_value', 'footer_text', 
+    'accounting_format', 'site_locations', 'role_kpis', 'notifications', 'operational_costs', 'locking_period_days', 
+    'delivery_zones', 'paper_format', 'silent_printing', 'global_stock_alert_threshold', 'api_keys', 
+    'available_taxes', 'display_price_ht', 'loyalty_tiers', 'enable_time_clock', 'session_timeout_minutes', 
+    'audit_log_retention_days', 'brand_color', 'fast_mode_enabled', 'default_lead_time_days', 'loyalty_points_per_unit'
+  ],
+  promotions: [
+    'id', 'name', 'description', 'type', 'value', 'start_date', 'end_date', 'conditions', 'active'
+  ],
+  returns: [
+    'id', 'transaction_id', 'product_id', 'quantity', 'reason', 'condition', 'refund_amount', 'date', 'status', 'notes'
+  ],
+  online_orders: [
+    'id', 'customer_id', 'customer_name', 'items', 'total', 'status', 'shipping_address', 'payment_status', 'created_at'
+  ],
+  purchases: [
+    'id', 'supplier_id', 'items', 'total_amount', 'status', 'date', 'documents'
+  ],
+  purchase_orders: [
+    'id', 'supplier_id', 'items', 'total_amount', 'status', 'expected_date', 'notes', 'created_at'
+  ],
+  stock_adjustments: [
+    'id', 'product_id', 'quantity_change', 'reason', 'user_id', 'date', 'cost_impact'
+  ],
+  supplier_payments: [
+    'id', 'supplier_id', 'amount', 'method', 'date', 'reference', 'notes'
+  ],
+  audits: [
+    'id', 'date', 'auditor_id', 'status', 'discrepancies', 'notes', 'completed_at'
+  ],
+  audit_logs: [
+    'id', 'user_id', 'action', 'entity', 'details', 'timestamp'
+  ],
+  supplier_syncs: [
+    'id', 'supplier_id', 'last_sync', 'status', 'items_updated', 'errors'
+  ],
+  damaged_items: [
+    'id', 'product_id', 'quantity', 'date', 'reported_by', 'reason', 'status'
+  ],
+  advances: [
+    'id', 'employee_id', 'amount', 'date', 'reason', 'status', 'approved_by', 'repayment_date'
   ]
 };
 
@@ -590,12 +634,23 @@ export async function initAndSyncSupabase() {
         try {
           // Optimisation: Utilisation de jointures pour charger les données liées
           // Comme suggéré (p.ex: transactions avec clients) pour éviter les requêtes N+1
-          const selectStr = table === 'transactions' ? '*, clients(*)' : '*';
+          let selectStr = table === 'transactions' ? '*, clients(*)' : '*';
           
-          const { data, error } = await supabase
+          let response = await supabase
             .from(mappedTable)
             .select(selectStr)
             .range(fromIdx, toIdx);
+
+          if (response.error && table === 'transactions' && (response.error.code === 'PGRST200' || response.error.message?.includes('relationship') || response.error.message?.includes('client'))) {
+            console.info(`[Supabase Sync Fallback] Retrying table "${mappedTable}" select with '*' because client relationship is missing in database schema.`);
+            selectStr = '*';
+            response = await supabase
+              .from(mappedTable)
+              .select(selectStr)
+              .range(fromIdx, toIdx);
+          }
+
+          const { data, error } = response;
 
           if (error) {
             console.warn(`[Supabase Sync Warning] Error reading table "${mappedTable}" at page ${fromIdx}-${toIdx}:`, error);
