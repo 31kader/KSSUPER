@@ -374,7 +374,8 @@ export const printReceipt = async (t: any, settings: CompanySettings) => {
   }
 };
 
-export const printLabels = (products: Product[], settings: CompanySettings) => {
+export const printLabels = (products: Product[], rawSettings: CompanySettings) => {
+  const settings = rawSettings as any;
   const useSilent = settings.silentPrinting;
 
   let printWindow: Window | null = null;
@@ -403,11 +404,11 @@ export const printLabels = (products: Product[], settings: CompanySettings) => {
 
   if (!doc) return;
 
-  const tpl = settings.labelTemplate || 'standard';
+  const tpl = (settings.labelTemplate as string) || 'standard';
   
   // Base/unrotated width and height
-  const defaultWidthNum = tpl === 'shelf-large' ? 80 : tpl === 'shelf-standard' ? 40 : 60;
-  const defaultHeightNum = tpl === 'shelf-standard' ? 30 : 40;
+  const defaultWidthNum = tpl === 'custom' ? 70 : (tpl === 'shelf-large' ? 80 : tpl === 'shelf-standard' ? 40 : 60);
+  const defaultHeightNum = tpl === 'custom' ? 40 : (tpl === 'shelf-standard' ? 30 : 40);
 
   const uWidthNum = settings.labelWidthCustom || defaultWidthNum;
   const uHeightNum = settings.labelHeightCustom || defaultHeightNum;
@@ -470,6 +471,203 @@ export const printLabels = (products: Product[], settings: CompanySettings) => {
           </div>
         </div>
       `;
+    } else if (tpl === 'custom') {
+      const showName = settings.customShowName !== false;
+      const showPrice = settings.customShowPrice !== false;
+      const showBarcode = settings.customShowBarcode !== false;
+      const showQr = settings.customShowQr === true;
+      const showImage = settings.customShowImage === true;
+      const customText = settings.customText || '';
+      const borderStyle = settings.customBorder ? '1px solid #000' : 'none';
+      
+      const nameSize = settings.customNameSize || 11;
+      const priceSize = settings.customPriceSize || 16;
+      const textSize = settings.customTextSize || 9;
+      const bHeight = settings.customBarcodeHeight || 30;
+      const paddingVal = settings.customPadding !== undefined ? settings.customPadding : 2;
+      
+      // Directional margins / alignments (haut, bas, gauche, droite)
+      const pTop = settings.customPaddingTop !== undefined ? settings.customPaddingTop : paddingVal;
+      const pBottom = settings.customPaddingBottom !== undefined ? settings.customPaddingBottom : paddingVal;
+      const pLeft = settings.customPaddingLeft !== undefined ? settings.customPaddingLeft : paddingVal;
+      const pRight = settings.customPaddingRight !== undefined ? settings.customPaddingRight : paddingVal;
+
+      const struct = settings.customLayoutStructure || 'classic';
+      const align = settings.customAlignment || 'center';
+
+      const tAlign = settings.customTextAlign || 'center';
+      const isBold = settings.customTextBold ? 'bold' : 'normal';
+      const isItalic = settings.customTextItalic ? 'italic' : 'normal';
+      const bWidthVal = settings.customBarcodeWidth || 1.2;
+
+      const imageHtml = showImage && (p.imageUrl || p.image) ? `<img src="${p.imageUrl || p.image}" style="width: 32px; height: 32px; object-fit: cover; border-radius: 4px; border: 1px solid #ddd;" referrerpolicy="no-referrer" />` : '';
+
+      if (struct === 'split') {
+        // Two-Column Layout organization: left side details, right side code
+        contentHtml = `
+          <div class="label-custom" style="
+            display: flex; 
+            flex-direction: row; 
+            align-items: center; 
+            justify-content: space-between; 
+            height: 100%; 
+            width: 100%; 
+            padding: ${pTop}mm ${pRight}mm ${pBottom}mm ${pLeft}mm; 
+            box-sizing: border-box;
+            background: #fff;
+            color: #000;
+            font-family: Arial, sans-serif;
+            border: ${borderStyle};
+            gap: 6px;
+          ">
+            <!-- Left part: details -->
+            <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; text-align: left; height: 100%;">
+              ${showName ? `<div class="name" style="font-weight: bold; font-size: ${nameSize}px; width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 2px;">${p.name}</div>` : ''}
+              <div style="display: flex; align-items: center; justify-content: flex-start; gap: 6px; margin: 3px 0; width: 100%;">
+                ${imageHtml}
+                ${showPrice ? `<div class="price" style="font-size: ${priceSize}px; font-weight: 900; margin: 0; white-space: nowrap;">${p.price.toFixed(2)} ${settings.currency}</div>` : ''}
+              </div>
+              ${customText ? `<div class="custom-text" style="font-size: ${textSize}px; font-weight: ${isBold}; font-style: ${isItalic}; color: #333; margin: 1px 0; width: 100%; word-break: break-word;">${customText}</div>` : ''}
+            </div>
+
+            <!-- Right part: barcode or QR -->
+            <div style="display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100%; max-width: 48%; min-width: 32%;">
+              ${showBarcode ? `
+                <div style="display: flex; justify-content: center; overflow: hidden; width: 100%;">
+                  <svg class="barcode-box" data-value="${skuForBarcode}" data-height="${Math.round(bHeight * 0.9)}" data-width="${bWidthVal}" data-show-text="false"></svg>
+                </div>
+              ` : ''}
+              ${showQr ? `
+                <div style="display: flex; justify-content: center; width: 100%;">
+                  <div class="qr-box" data-value="${p.sku || p.id}" data-scale="1.4"></div>
+                </div>
+              ` : ''}
+              ${(!showBarcode && !showQr) ? `<div class="sku" style="font-size: 8px; color: #666; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 100%;">${p.sku || p.id}</div>` : ''}
+            </div>
+          </div>
+        `;
+      } else if (struct === 'price-heavy') {
+        // Price Dominant layout (Focus prix)
+        contentHtml = `
+          <div class="label-custom" style="
+            display: flex; 
+            flex-direction: row; 
+            align-items: center; 
+            justify-content: space-between; 
+            height: 100%; 
+            width: 100%; 
+            padding: ${pTop}mm ${pRight}mm ${pBottom}mm ${pLeft}mm; 
+            box-sizing: border-box;
+            background: #fff;
+            color: #000;
+            font-family: Arial, sans-serif;
+            border: ${borderStyle};
+            gap: 8px;
+          ">
+            <div style="display: flex; flex-direction: column; justify-content: center; align-items: center; background: #f1f5f9; border: 1.5px solid #000; border-radius: 4px; padding: 4px; min-width: 45%; height: 100%; box-sizing: border-box;">
+              ${showPrice ? `
+                <div class="price" style="font-size: ${Math.round(priceSize * 1.25)}px; font-weight: 900; line-height: 1; text-align: center; color: #000;">${p.price.toFixed(2)}</div>
+                <div style="font-size: 9px; font-weight: bold; margin-top: 3px; text-transform: uppercase; color: #475569;">${settings.currency}</div>
+              ` : '<div style="font-weight: bold; font-size: 11px;">PROMO</div>'}
+            </div>
+
+            <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: space-between; height: 100%;">
+              ${showName ? `<div class="name" style="font-weight: bold; font-size: ${nameSize}px; width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${p.name}</div>` : ''}
+              ${customText ? `<div class="custom-text" style="font-size: ${textSize}px; font-weight: ${isBold}; font-style: ${isItalic}; color: #333; width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${customText}</div>` : ''}
+              
+              ${showBarcode ? `
+                <div style="width: 100%; overflow: hidden;">
+                  <svg class="barcode-box" data-value="${skuForBarcode}" data-height="${Math.max(15, Math.round(bHeight * 0.75))}" data-width="${bWidthVal}" data-show-text="false"></svg>
+                </div>
+              ` : ''}
+              ${showQr && !showBarcode ? `
+                <div style="width: 100%; display: flex; justify-content: flex-start;">
+                  <div class="qr-box" data-value="${p.sku || p.id}" data-scale="1.2"></div>
+                </div>
+              ` : ''}
+              ${(!showBarcode && !showQr) ? `<div class="sku" style="font-size: 8px; color: #666; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 100%;">${p.sku || p.id}</div>` : ''}
+            </div>
+          </div>
+        `;
+      } else if (struct === 'barcode-centric') {
+        // Barcode Centric (Master code - giant barcode takes center space)
+        contentHtml = `
+          <div class="label-custom" style="
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            justify-content: space-between; 
+            height: 100%; 
+            width: 100%; 
+            padding: ${pTop}mm ${pRight}mm ${pBottom}mm ${pLeft}mm; 
+            box-sizing: border-box;
+            background: #fff;
+            color: #000;
+            font-family: Arial, sans-serif;
+            border: ${borderStyle};
+          ">
+            <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; gap: 6px; margin-bottom: 2px;">
+              ${showName ? `<div class="name" style="font-weight: bold; font-size: ${nameSize}px; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left;">${p.name}</div>` : ''}
+              ${showPrice ? `<div class="price" style="font-size: ${priceSize}px; font-weight: 950; text-align: right; white-space: nowrap;">${p.price.toFixed(2)} ${settings.currency}</div>` : ''}
+            </div>
+
+            ${customText ? `<div class="custom-text" style="font-size: ${textSize}px; font-weight: ${isBold}; font-style: ${isItalic}; color: #333; width: 100%; text-align: center; margin-bottom: 2px;">${customText}</div>` : ''}
+
+            ${showBarcode ? `
+              <div style="display: flex; justify-content: center; width: 100%; overflow: hidden; flex: 1; align-items: center;">
+                <svg class="barcode-box" data-value="${skuForBarcode}" data-height="${Math.round(bHeight * 1.2)}" data-width="${bWidthVal}"></svg>
+              </div>
+            ` : ''}
+            ${showQr && !showBarcode ? `
+              <div style="display: flex; justify-content: center; width: 100%; flex: 1; align-items: center;">
+                <div class="qr-box" data-value="${p.sku || p.id}" data-scale="1.8"></div>
+              </div>
+            ` : ''}
+            ${(!showBarcode && !showQr) ? `<div class="sku" style="font-size: 8px; color: #666; text-align: center; width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${p.sku || p.id}</div>` : ''}
+          </div>
+        `;
+      } else {
+        // 'classic' or default: vertical stack aligned by align setting
+        contentHtml = `
+          <div class="label-custom" style="
+            display: flex; 
+            flex-direction: column; 
+            align-items: ${align === 'left' ? 'flex-start' : align === 'right' ? 'flex-end' : 'center'}; 
+            justify-content: space-between; 
+            height: 100%; 
+            width: 100%; 
+            padding: ${pTop}mm ${pRight}mm ${pBottom}mm ${pLeft}mm; 
+            box-sizing: border-box;
+            background: #fff;
+            color: #000;
+            font-family: Arial, sans-serif;
+            border: ${borderStyle};
+          ">
+            ${showName ? `<div class="name" style="font-weight: bold; font-size: ${nameSize}px; width: 100%; text-align: ${align}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 2px;">${p.name}</div>` : ''}
+            
+            <div style="display: flex; align-items: center; justify-content: ${align === 'left' ? 'flex-start' : align === 'right' ? 'flex-end' : 'center'}; gap: 8px; margin: auto; width: 100%;">
+              ${imageHtml}
+              ${showPrice ? `<div class="price" style="font-size: ${priceSize}px; font-weight: 900; margin: 0; white-space: nowrap;">${p.price.toFixed(2)} ${settings.currency}</div>` : ''}
+            </div>
+
+            ${customText ? `<div class="custom-text" style="font-size: ${textSize}px; text-align: ${tAlign}; font-weight: ${isBold}; font-style: ${isItalic}; color: #333; margin: 2px 0; width: 100%; word-break: break-word;">${customText}</div>` : ''}
+
+            ${showBarcode ? `
+              <div style="display: flex; justify-content: ${align === 'left' ? 'flex-start' : align === 'right' ? 'flex-end' : 'center'}; width: 100%; overflow: hidden; margin: 2px 0;">
+                <svg class="barcode-box" data-value="${skuForBarcode}" data-height="${bHeight}" data-width="${bWidthVal}"></svg>
+              </div>
+            ` : ''}
+            
+            ${showQr ? `
+              <div style="display: flex; justify-content: ${align === 'left' ? 'flex-start' : align === 'right' ? 'flex-end' : 'center'}; width: 100%; margin: 2px 0;">
+                <div class="qr-box" data-value="${p.sku || p.id}" data-scale="1.8"></div>
+              </div>
+            ` : ''}
+
+            ${(!showBarcode && !showQr) ? `<div class="sku" style="font-size: 8px; color: #666; width: 100%; text-align: ${align}; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${p.sku || p.id}</div>` : ''}
+          </div>
+        `;
+      }
     } else if (tpl === 'barcode-only') {
       contentHtml = `
         <div class="label-standard" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%;">
@@ -507,8 +705,8 @@ export const printLabels = (products: Product[], settings: CompanySettings) => {
         <title>Etiquettes</title>
         <style>
           @page { 
-            size: ${width} ${height} !important; 
-            margin: 0 !important; 
+            size: ${width} ${height}; 
+            margin: 0; 
           }
           * { box-sizing: border-box; }
           html, body { 
@@ -517,8 +715,8 @@ export const printLabels = (products: Product[], settings: CompanySettings) => {
             background: white !important;
             font-family: sans-serif;
             width: ${width} !important;
-            height: ${height} !important;
-            overflow: hidden !important;
+            height: auto !important;
+            overflow: visible !important;
           }
           .label-container {
             width: ${width} !important; 
@@ -527,9 +725,7 @@ export const printLabels = (products: Product[], settings: CompanySettings) => {
             margin: 0;
             box-sizing: border-box;
             background: white;
-            position: absolute !important;
-            top: 0 !important;
-            left: 0 !important;
+            position: relative !important;
             overflow: hidden;
             page-break-after: always;
             break-after: page;
@@ -611,24 +807,29 @@ export const printLabels = (products: Product[], settings: CompanySettings) => {
             // Generate QRs
             document.querySelectorAll('.qr-box').forEach(el => {
               const val = el.getAttribute('data-value');
+              const scaleAttr = el.getAttribute('data-scale');
+              const scale = scaleAttr ? parseFloat(scaleAttr) : (${tpl === 'shelf-standard' ? 1.5 : 2.5});
               if (val) {
                 const qr = qrcode(0, 'M');
                 qr.addData(val);
                 qr.make();
-                el.innerHTML = qr.createSvgTag(${tpl === 'shelf-standard' ? 1.5 : 2.5}, 0);
+                el.innerHTML = qr.createSvgTag(scale, 0);
               }
             });
 
             // Generate Barcodes
             document.querySelectorAll('.barcode-box').forEach(el => {
               const val = el.getAttribute('data-value');
+              const bHeight = Number(el.getAttribute('data-height') || 30);
+              const bWidth = Number(el.getAttribute('data-width') || 1.2);
+              const showText = el.getAttribute('data-show-text') !== 'false';
               if (val) {
                 try {
                   JsBarcode(el, val, {
                     format: "CODE128",
-                    width: 1.2,
-                    height: 30,
-                    displayValue: true,
+                    width: bWidth,
+                    height: bHeight,
+                    displayValue: showText,
                     fontSize: 10,
                     margin: 0
                   });
