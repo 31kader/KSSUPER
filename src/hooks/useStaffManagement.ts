@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { auth, rtdb, ref, get, set, push, child, rtdbQuery, orderByChild, equalTo, handleFirestoreError, OperationType } from '../database';
 import { Employee } from '../types';
 
+import { getApiUrl } from '@/src/lib/api';
+
 export function useStaffManagement() {
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
   const [activeStaffId, setActiveStaffId] = useState<string | null>(null);
@@ -46,7 +48,7 @@ export function useStaffManagement() {
       if (password || email || phone) {
         try {
           const idToken = auth.currentUser?.getIdToken ? await auth.currentUser.getIdToken() : 'mock-token';
-          const syncResponse = await fetch('/api/employees/sync-auth', {
+          const syncResponse = await fetch(getApiUrl('/api/employees/sync-auth'), {
             method: 'POST',
             headers: { 
               'Content-Type': 'application/json',

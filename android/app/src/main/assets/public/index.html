@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="google" content="notranslate" />
+    <title>Nexus POS Pro</title>
+    <meta name="description" content="Système de point de vente professionnel" />
+    <meta name="theme-color" content="#4f46e5" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="apple-touch-icon" href="/icon.svg" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Nexus POS" />
+    <script type="module" crossorigin src="/assets/index-uNPntdWh.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/vendor-base-BsMK_pAI.js">
+    <link rel="modulepreload" crossorigin href="/assets/vendor-icons-D0cLBy2G.js">
+    <link rel="modulepreload" crossorigin href="/assets/vendor-charts-DFijFuuB.js">
+    <link rel="stylesheet" crossorigin href="/assets/index-Zrs0uSEg.css">
+  <link rel="manifest" href="/manifest.webmanifest"></head>
+  <body>
+    <div id="root" class="notranslate"></div>
+    <div id="debug-error" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:white; color:red; padding:20px; z-index:9999; overflow:auto; font-family:monospace;">
+      <h1>Runtime Error Caught:</h1>
+      <pre id="error-message"></pre>
+      <button onclick="location.reload()" style="padding:10px; margin-top:20px;">Reload Page</button>
+    </div>
+    <script>
+      // Sandbox-safe globally intercepted dialog overlays
+      window.alert = function(msg) {
+        console.log("[Sandbox Alert Interceptor]", msg);
+        // Clean up any existing alert first
+        const existing = document.getElementById('custom-alert-box');
+        if (existing) existing.remove();
+
+        const container = document.createElement('div');
+        container.id = 'custom-alert-box';
+        container.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; display:flex; align-items:center; justify-content:center; z-index:999999; background:rgba(0,0,0,0.5); backdrop-filter:blur(4px); padding:16px; box-sizing:border-box; font-family:system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;';
+        
+        container.innerHTML = `
+          <div style="background:#ffffff; border-radius:16px; max-width:380px; width:100%; padding:24px; box-shadow:0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04); border:1px solid rgba(0,0,0,0.05); animation: customFadeIn 0.2s ease-out;">
+            <div style="display:flex; align-items:center; gap:12px; margin-bottom:16px; color:#f59e0b;">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-alert-circle"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12" y1="16" y2="16"/></svg>
+              <span style="font-weight:700; color:#111827; font-size:18px;">Notification</span>
+            </div>
+            <p style="color:#4b5563; margin:0 0 24px 0; font-size:14px; line-height:1.5;">${msg}</p>
+            <button onclick="document.getElementById('custom-alert-box').remove()" style="width:100%; background:#4f46e5; hover:background:#4338ca; color:#ffffff; font-weight:600; padding:10px 16px; border-radius:12px; border:none; cursor:pointer; font-size:14px; transition: background 0.15s ease;">
+              D'accord
+            </button>
+          </div>
+          <style>
+            @keyframes customFadeIn {
+              from { opacity: 0; transform: scale(0.95); }
+              to { opacity: 1; transform: scale(1); }
+            }
+          </style>
+        `;
+        document.body.appendChild(container);
+      };
+
+      window.confirm = function(msg) {
+        console.log("[Sandbox Confirm Interceptor - Auto Approving]", msg);
+        
+        const notification = document.createElement('div');
+        notification.style.cssText = 'position:fixed; bottom:16px; right:16px; z-index:999999; background:#111827; color:#ffffff; border-radius:12px; padding:16px; display:flex; align-items:center; gap:12px; box-shadow:0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05); font-family:system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width:320px; animation: customSlideUp 0.3s ease-out;';
+        
+        notification.innerHTML = `
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          <div style="font-size:12px;">
+            <p style="margin:0; font-weight:700; color:#ffffff;">Confirmation Automatique</p>
+            <p style="margin:2px 0 0 0; color:#9ca3af; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:240px;">${msg}</p>
+          </div>
+          <style>
+            @keyframes customSlideUp {
+              from { opacity: 0; transform: translateY(10px); }
+              to { opacity: 1; transform: translateY(0); }
+            }
+          </style>
+        `;
+        document.body.appendChild(notification);
+        setTimeout(() => {
+          if (notification) notification.remove();
+        }, 4000);
+        return true;
+      };
+
+      window.onerror = function(msg, url, line, col, error) {
+        document.getElementById('debug-error').style.display = 'block';
+        document.getElementById('error-message').textContent = 
+          msg + '\nat ' + url + ':' + line + ':' + col + '\n\n' + (error ? error.stack : '');
+        return false;
+      };
+      window.addEventListener('unhandledrejection', function(event) {
+        // Ignore benign WebSocket errors from Vite HMR
+        var reason = event.reason && event.reason.message || String(event.reason);
+        if (reason.includes('WebSocket closed without opened') || reason.includes('failed to connect to websocket')) {
+          return;
+        }
+        document.getElementById('debug-error').style.display = 'block';
+        document.getElementById('error-message').textContent = 
+          'Unhandled Rejection: ' + event.reason + '\n\n' + (event.reason && event.reason.stack ? event.reason.stack : '');
+      });
+    </script>
+  </body>
+</html>
+

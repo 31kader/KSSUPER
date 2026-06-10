@@ -13,11 +13,12 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export const logAction = async (userId: string, userName: string, action: string, module: string, details: string, severity: 'info' | 'warning' | 'critical' = 'info') => {
+  const id = Math.random().toString(36).substring(2, 11);
+  const now = new Date().toISOString();
   try {
-    const id = Math.random().toString(36).substring(2, 11);
     const { error } = await supabase.from('audit_logs').insert({
       id,
-      timestamp: new Date().toISOString(),
+      timestamp: now,
       userId,
       userName,
       action,
@@ -25,7 +26,17 @@ export const logAction = async (userId: string, userName: string, action: string
       details,
       severity
     });
-    if (error) throw error;
+    if (error) {
+      console.warn("Retrying logAction with fallback schema because of:", error.message);
+      const { error: fallbackError } = await supabase.from('audit_logs').insert({
+        id,
+        timestamp: now,
+        user_id: userId,
+        action,
+        details: `[Auteur: ${userName}] [Module: ${module}] [Sévérité: ${severity}] ${details}`
+      });
+      if (fallbackError) throw fallbackError;
+    }
   } catch (error) {
     console.error("Failed to log action:", error);
   }
@@ -221,3 +232,94 @@ export const announcePrice = (name: string, price: number, currency: string) => 
     console.warn('Speech synthesis failed:', e);
   }
 };
+
+export function sanitizeProductForSupabase(data: any): any {
+  if (!data) return {};
+  const snakeData: any = {};
+  for (const key in data) {
+    if (Object.prototype.hasOwnProperty.call(data, key)) {
+      const snakeKey = key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+      snakeData[snakeKey] = data[key];
+    }
+  }
+  
+  const clean: any = {};
+  const ALLOWED = [
+    'id', 'name', 'barcode', 'sku', 'reference', 'image_url', 'image_urls', 
+    'price', 'online_price', 'cost_price', 'wholesale_price', 'tax_rate', 
+    'stock', 'min_stock', 'category_id', 'brand_id', 'supplier', 'unit', 
+    'status', 'description', 'is_bundle', 'bundle_items', 'quantity_discounts', 
+    'tags', 'expiration_date', 'batch_number', 'location', 'show_in_pos', 
+    'damaged_stock', 'created_at', 'updated_at',
+    'use_multi_expiry', 'batches', 'auto_unpack', 'units_per_parent', 'parent_id'
+  ];
+  
+  for (const col of ALLOWED) {
+    if (snakeData[col] !== undefined) {
+      let val = snakeData[col];
+      
+      const numericColumns = [
+        'price', 'online_price', 'cost_price', 'wholesale_price', 'tax_rate', 
+        'stock', 'min_stock', 'damaged_stock', 'units_per_parent'
+      ];
+      if (numericColumns.includes(col)) {
+        if (typeof val === 'string') {
+          val = parseFloat(val.replace(',', '.').replace(/[^\d.-]/g, ''));
+        } else {
+          val = Number(val);
+        }
+        if (isNaN(val)) {
+          val = col === 'units_per_parent' ? 1 : 0;
+        }
+      }
+      
+      const arrayColumns = ['tags', 'image_urls'];
+      if (arrayColumns.includes(col)) {
+        if (typeof val === 'string') {
+          try {
+            val = JSON.parse(val);
+          } catch (_) {
+            val = val ? val.split(',').map((s: string) => s.trim()).filter(Boolean) : [];
+          }
+        }
+        if (!Array.isArray(val)) {
+          val = [];
+        }
+      }
+      
+      const jsonColumns = ['bundle_items', 'quantity_discounts', 'batches'];
+      if (jsonColumns.includes(col)) {
+        if (typeof val === 'string') {
+          try { val = JSON.parse(val); } catch (_) { val = []; }
+        }
+        if (!val) val = [];
+      }
+
+      const booleanColumns = ['use_multi_expiry', 'auto_unpack'];
+      if (booleanColumns.includes(col)) {
+        val = !!val;
+      }
+      
+      if (col === 'date' || col.endsWith('_date') || col === 'last_visit' || col === 'hire_date') {
+        if (!val || val === '') {
+          val = null;
+        } else {
+          try {
+            const d = new Date(val);
+            if (!isNaN(d.getTime())) {
+              val = d.toISOString().split('T')[0];
+            } else {
+              val = null;
+            }
+          } catch (_) {
+            val = null;
+          }
+        }
+      }
+      
+      clean[col] = val;
+    }
+  }
+  
+  return clean;
+}

@@ -417,3 +417,260 @@ export async function insertSalesTransaction(transactionData: any) {
    VITE_SUPABASE_ANON_KEY=votre_cle_publique_anon
    ```
 4. **Adapter useDataFetching.ts** : Dans le code de l'application, remplacez les écouteurs Firebase Realtime Database par des requêtes `supabase.from('nom_table').select('*')` pour charger instantanément les articles d'inventaire dans l'interface de caisse.
+
+---
+
+## 5. REQUÊTES COMPLÉMENTAIRES DE MISE À JOUR (SUPÉRIEURE/NOUVEAU)
+
+Si vous rencontrez des erreurs indiquant qu'une table (comme `cart_drafts`) ou des colonnes (comme `auto_unpack` ou `batches`) sont manquantes, exécutez la mise à jour suivante dans votre **SQL Editor** de Supabase :
+
+```sql
+-- =========================================================================
+-- MISE À JOUR DE LA TABLE PRODUCTS (Colonnes manquantes)
+-- =========================================================================
+ALTER TABLE products ADD COLUMN IF NOT EXISTS use_multi_expiry BOOLEAN DEFAULT FALSE;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS batches JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS auto_unpack BOOLEAN DEFAULT FALSE;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS units_per_parent NUMERIC(12, 2) DEFAULT 1.00;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS parent_id TEXT;
+
+-- =========================================================================
+-- CRÉATION DE LA TABLE CART_DRAFTS (Brouillons de la Caisse)
+-- =========================================================================
+CREATE TABLE IF NOT EXISTS cart_drafts (
+    "userId" TEXT PRIMARY KEY,
+    sessions JSONB,
+    "activeSessionId" TEXT,
+    "updatedAt" TIMESTAMPTZ DEFAULT NOW(),
+    user_id TEXT, -- alternative pour la compatibilité snake_case
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Activation des règles d'accès RLS pour cart_drafts
+ALTER TABLE cart_drafts ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "gestion_cart_drafts" ON cart_drafts FOR ALL TO authenticated USING (true);
+CREATE POLICY "gestion_publique_cart_drafts" ON cart_drafts FOR ALL TO anon USING (true);
+
+-- =========================================================================
+-- TABLES COMPLÉMENTAIRES (Si non existantes)
+-- =========================================================================
+
+-- 1. SETTINGS
+CREATE TABLE IF NOT EXISTS settings (
+    id TEXT PRIMARY KEY,
+    name TEXT,
+    logo_url TEXT,
+    address TEXT,
+    phone TEXT,
+    email TEXT,
+    tax_number TEXT,
+    receipt_template TEXT,
+    label_template TEXT,
+    currency TEXT DEFAULT 'DA',
+    tax_rate NUMERIC(10,2) DEFAULT 0.00,
+    loyalty_points_per_currency_unit NUMERIC(10,2) DEFAULT 0.00,
+    loyalty_point_value NUMERIC(10,2) DEFAULT 0.00,
+    footer_text TEXT,
+    accounting_format TEXT,
+    site_locations JSONB DEFAULT '[]'::jsonb,
+    role_kpis JSONB DEFAULT '[]'::jsonb,
+    notifications JSONB DEFAULT '[]'::jsonb,
+    operational_costs JSONB DEFAULT '[]'::jsonb,
+    locking_period_days INT DEFAULT 0,
+    delivery_zones JSONB DEFAULT '[]'::jsonb,
+    paper_format TEXT,
+    silent_printing BOOLEAN DEFAULT FALSE,
+    global_stock_alert_threshold NUMERIC(10,2) DEFAULT 5.00,
+    api_keys JSONB DEFAULT '{}'::jsonb,
+    available_taxes JSONB DEFAULT '[]'::jsonb,
+    display_price_ht BOOLEAN DEFAULT FALSE,
+    loyalty_tiers JSONB DEFAULT '[]'::jsonb,
+    enable_time_clock BOOLEAN DEFAULT FALSE,
+    session_timeout_minutes INT DEFAULT 30,
+    audit_log_retention_days INT DEFAULT 90,
+    brand_color TEXT,
+    fast_mode_enabled BOOLEAN DEFAULT FALSE,
+    default_lead_time_days INT DEFAULT 3,
+    loyalty_points_per_unit NUMERIC(10,2) DEFAULT 0.00
+);
+
+ALTER TABLE settings ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "lecture_publique_settings" ON settings FOR SELECT USING (true);
+CREATE POLICY "modification_settings" ON settings FOR ALL TO authenticated USING (true);
+
+-- 2. PROMOTIONS
+CREATE TABLE IF NOT EXISTS promotions (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT,
+    type TEXT,
+    value NUMERIC(12,2),
+    start_date DATE,
+    end_date DATE,
+    conditions JSONB,
+    active BOOLEAN DEFAULT TRUE
+);
+
+ALTER TABLE promotions ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "lecture_publique_promotions" ON promotions FOR SELECT USING (true);
+CREATE POLICY "modification_promotions" ON promotions FOR ALL TO authenticated USING (true);
+
+-- 3. RETURNS
+CREATE TABLE IF NOT EXISTS returns (
+    id TEXT PRIMARY KEY,
+    transaction_id TEXT,
+    product_id TEXT,
+    quantity NUMERIC(12,3) NOT NULL DEFAULT 0.00,
+    reason TEXT,
+    condition TEXT,
+    refund_amount NUMERIC(12,2),
+    date DATE DEFAULT CURRENT_DATE,
+    status TEXT DEFAULT 'pending',
+    notes TEXT
+);
+
+ALTER TABLE returns ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "gestion_returns" ON returns FOR ALL TO authenticated USING (true);
+
+-- 4. ONLINE ORDERS
+CREATE TABLE IF NOT EXISTS online_orders (
+    id TEXT PRIMARY KEY,
+    customer_id TEXT,
+    customer_name TEXT,
+    items JSONB,
+    total NUMERIC(12,2),
+    status TEXT DEFAULT 'pending',
+    shipping_address TEXT,
+    payment_status TEXT DEFAULT 'unpaid',
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE online_orders ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "gestion_online_orders" ON online_orders FOR ALL TO authenticated USING (true);
+
+-- 5. PURCHASES
+CREATE TABLE IF NOT EXISTS purchases (
+    id TEXT PRIMARY KEY,
+    supplier_id TEXT,
+    items JSONB,
+    total_amount NUMERIC(12,2),
+    status TEXT,
+    date DATE DEFAULT CURRENT_DATE,
+    documents TEXT[]
+);
+
+ALTER TABLE purchases ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "gestion_purchases" ON purchases FOR ALL TO authenticated USING (true);
+
+-- 6. PURCHASE ORDERS
+CREATE TABLE IF NOT EXISTS purchase_orders (
+    id TEXT PRIMARY KEY,
+    supplier_id TEXT,
+    items JSONB,
+    total_amount NUMERIC(12,2),
+    status TEXT,
+    expected_date DATE,
+    notes TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE purchase_orders ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "gestion_purchase_orders" ON purchase_orders FOR ALL TO authenticated USING (true);
+
+-- 7. STOCK ADJUSTMENTS
+CREATE TABLE IF NOT EXISTS stock_adjustments (
+    id TEXT PRIMARY KEY,
+    product_id TEXT,
+    quantity_change NUMERIC(12,3),
+    reason TEXT,
+    user_id TEXT,
+    date DATE DEFAULT CURRENT_DATE,
+    cost_impact NUMERIC(12,2)
+);
+
+ALTER TABLE stock_adjustments ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "gestion_stock_adjustments" ON stock_adjustments FOR ALL TO authenticated USING (true);
+
+-- 8. SUPPLIER PAYMENTS
+CREATE TABLE IF NOT EXISTS supplier_payments (
+    id TEXT PRIMARY KEY,
+    supplier_id TEXT,
+    amount NUMERIC(12,2),
+    method TEXT,
+    date DATE DEFAULT CURRENT_DATE,
+    reference TEXT,
+    notes TEXT
+);
+
+ALTER TABLE supplier_payments ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "gestion_supplier_payments" ON supplier_payments FOR ALL TO authenticated USING (true);
+
+-- 9. AUDITS
+CREATE TABLE IF NOT EXISTS audits (
+    id TEXT PRIMARY KEY,
+    date DATE DEFAULT CURRENT_DATE,
+    auditor_id TEXT,
+    status TEXT,
+    discrepancies JSONB,
+    notes TEXT,
+    completed_at TIMESTAMPTZ
+);
+
+ALTER TABLE audits ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "gestion_audits" ON audits FOR ALL TO authenticated USING (true);
+
+-- 10. AUDIT LOGS
+CREATE TABLE IF NOT EXISTS audit_logs (
+    id TEXT PRIMARY KEY,
+    user_id TEXT,
+    action TEXT,
+    entity TEXT,
+    details TEXT,
+    timestamp TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "gestion_audit_logs" ON audit_logs FOR ALL TO authenticated USING (true);
+
+-- 11. SUPPLIER SYNCS
+CREATE TABLE IF NOT EXISTS supplier_syncs (
+    id TEXT PRIMARY KEY,
+    supplier_id TEXT,
+    last_sync TIMESTAMPTZ,
+    status TEXT,
+    items_updated INT,
+    errors TEXT
+);
+
+ALTER TABLE supplier_syncs ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "gestion_supplier_syncs" ON supplier_syncs FOR ALL TO authenticated USING (true);
+
+-- 12. DAMAGED ITEMS
+CREATE TABLE IF NOT EXISTS damaged_items (
+    id TEXT PRIMARY KEY,
+    product_id TEXT,
+    quantity NUMERIC(12,3),
+    date DATE DEFAULT CURRENT_DATE,
+    reported_by TEXT,
+    reason TEXT,
+    status TEXT
+);
+
+ALTER TABLE damaged_items ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "gestion_damaged_items" ON damaged_items FOR ALL TO authenticated USING (true);
+
+-- 13. ADVANCES
+CREATE TABLE IF NOT EXISTS advances (
+    id TEXT PRIMARY KEY,
+    employee_id TEXT,
+    amount NUMERIC(12,2),
+    date DATE DEFAULT CURRENT_DATE,
+    reason TEXT,
+    status TEXT,
+    approved_by TEXT,
+    repayment_date DATE
+);
+
+ALTER TABLE advances ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "gestion_advances" ON advances FOR ALL TO authenticated USING (true);
+```

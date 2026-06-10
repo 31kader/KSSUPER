@@ -64,7 +64,8 @@ const TABLE_COLUMNS: Record<string, string[]> = {
     'stock', 'min_stock', 'category_id', 'brand_id', 'supplier', 'unit', 
     'status', 'description', 'is_bundle', 'bundle_items', 'quantity_discounts', 
     'tags', 'expiration_date', 'batch_number', 'location', 'show_in_pos', 
-    'damaged_stock', 'created_at', 'updated_at'
+    'damaged_stock', 'created_at', 'updated_at',
+    'use_multi_expiry', 'batches', 'auto_unpack', 'units_per_parent', 'parent_id'
   ],
   customers: [
     'id', 'name', 'phone', 'email', 'loyalty_points', 'balance', 'loyalty_card_number', 
@@ -145,7 +146,7 @@ const TABLE_COLUMNS: Record<string, string[]> = {
     'id', 'date', 'auditor_id', 'status', 'discrepancies', 'notes', 'completed_at'
   ],
   audit_logs: [
-    'id', 'user_id', 'action', 'entity', 'details', 'timestamp'
+    'id', 'user_id', 'user_name', 'action', 'entity', 'module', 'details', 'severity', 'is_cancelled', 'cancelled_at', 'updated_at', 'timestamp'
   ],
   supplier_syncs: [
     'id', 'supplier_id', 'last_sync', 'status', 'items_updated', 'errors'
@@ -229,7 +230,7 @@ function preparePayload(table: string, id: string, data: any) {
     }
 
     // 3. Format columns that PostgreSQL / Supabase expects as actual BOOLEANS
-    const booleanKeys = ['is_bundle', 'show_in_pos', 'is_app_user', 'is_clocked_in', 'sync_enabled', 'has_full_inventory_access'];
+    const booleanKeys = ['is_bundle', 'show_in_pos', 'is_app_user', 'is_clocked_in', 'sync_enabled', 'has_full_inventory_access', 'use_multi_expiry', 'auto_unpack'];
     if (booleanKeys.includes(key)) {
       return !!val;
     }
@@ -240,7 +241,8 @@ function preparePayload(table: string, id: string, data: any) {
       'stock', 'min_stock', 'damaged_stock', 'total', 'amount', 'balance', 
       'loyalty_points', 'total_spent', 'expected_cash', 'final_cash', 
       'initial_cash', 'total_sales', 'total_expenses', 'level', 'points_earned',
-      'discount_amount', 'points_discount', 'balance_used', 'voucher_discount', 'value', 'current_balance', 'min_purchase'
+      'discount_amount', 'points_discount', 'balance_used', 'voucher_discount', 'value', 'current_balance', 'min_purchase',
+      'units_per_parent'
     ];
     if (numericKeys.includes(key)) {
       let parsedNum: number;
@@ -249,7 +251,7 @@ function preparePayload(table: string, id: string, data: any) {
       } else {
         parsedNum = Number(val);
       }
-      return isNaN(parsedNum) ? 0 : parsedNum;
+      return isNaN(parsedNum) ? (key === 'units_per_parent' ? 1 : 0) : parsedNum;
     }
 
     // 5. Handle DATE columns (Standardize to YYYY-MM-DD to avoid time-zone/format mismatch)
@@ -265,12 +267,12 @@ function preparePayload(table: string, id: string, data: any) {
     }
 
     // 6. Handle JSONB fields
-    const jsonKeys = ['bundle_items', 'quantity_discounts', 'usage_logs', 'items', 'alerts', 'favorite_items', 'usage_logs'];
+    const jsonKeys = ['bundle_items', 'quantity_discounts', 'usage_logs', 'items', 'alerts', 'favorite_items', 'usage_logs', 'batches'];
     if (jsonKeys.includes(key)) {
       if (typeof val === 'string') {
-        try { return JSON.parse(val); } catch (_) { return null; }
+        try { return JSON.parse(val); } catch (_) { return []; }
       }
-      return val || null;
+      return val || [];
     }
 
     return val;
@@ -489,37 +491,65 @@ function persistAndTrigger(table: string, id: string | null, value: any, isDelet
       const payload = preparePayload(mappedTable, id, value);
       
       if (mappedTable === 'products') {
-        const catId = payload.category_id;
-        if (!catId) {
-          const categoriesDict = dbState['categories'] || {};
-          let firstCatId = Object.keys(categoriesDict)[0];
-          
-          if (!firstCatId) {
-            firstCatId = 'uncategorized';
-            if (!dbState['categories']) dbState['categories'] = {};
-            dbState['categories'][firstCatId] = {
-              id: firstCatId,
-              name: 'Sans catégorie',
-              level: 1
-            };
-            saveStateToStorage();
-            triggerObservers('categories');
-            triggerObservers(`categories/${firstCatId}`);
-          }
-          
-          // Seed default category first to prevent constraint violations
-          const catPayload = preparePayload('categories', firstCatId, dbState['categories'][firstCatId]);
-          supabase.from('categories').upsert(catPayload, { onConflict: 'id' }).then(({ error: catErr }) => {
-            if (catErr) {
-              handleSupabaseError('categories', 'Fallback', catErr);
+        const runProductUpsert = async () => {
+          try {
+            // Ensure category exists
+            let catId = payload.category_id;
+            if (!catId) {
+              const categoriesDict = dbState['categories'] || {};
+              let firstCatId = Object.keys(categoriesDict)[0];
+              if (!firstCatId) {
+                firstCatId = 'uncategorized';
+                if (!dbState['categories']) dbState['categories'] = {};
+                dbState['categories'][firstCatId] = {
+                  id: firstCatId,
+                  name: 'Sans catégorie',
+                  level: 1
+                };
+                saveStateToStorage();
+                triggerObservers('categories');
+                triggerObservers(`categories/${firstCatId}`);
+              }
+              catId = firstCatId;
             }
-            payload.category_id = firstCatId;
-            supabase.from('products').upsert(payload, { onConflict: 'id' }).then(({ error }) => {
-              if (error) handleSupabaseError('products', 'Fallback', error);
-            });
-          });
-          return;
-        }
+
+            // Sync category to be absolutely sure
+            const catObj = dbState['categories'] ? dbState['categories'][catId] : null;
+            if (catObj) {
+              const catPayload = preparePayload('categories', catId, catObj);
+              await supabase.from('categories').upsert(catPayload, { onConflict: 'id' }).then(({ error: catErr }) => {
+                if (catErr) handleSupabaseError('categories', 'Fallback', catErr);
+              });
+            }
+            payload.category_id = catId;
+
+            // Ensure brand exists if provided
+            const brandId = payload.brand_id;
+            if (brandId) {
+              const brandObj = dbState['brands'] ? dbState['brands'][brandId] : null;
+              if (brandObj) {
+                const brandPayload = preparePayload('brands', brandId, brandObj);
+                await supabase.from('brands').upsert(brandPayload, { onConflict: 'id' }).then(({ error: brandErr }) => {
+                  if (brandErr) handleSupabaseError('brands', 'Fallback', brandErr);
+                });
+              } else {
+                // Brand ID was specified but doesn't exist in local brands state, clear to prevent fkey issues
+                payload.brand_id = null;
+              }
+            }
+
+            // Now upsert the product
+            const { error: prodErr } = await supabase.from('products').upsert(payload, { onConflict: 'id' });
+            if (prodErr) {
+              handleSupabaseError('products', 'Upsert', prodErr);
+            }
+          } catch (err: any) {
+            console.error("Error persisting product to Supabase:", err);
+          }
+        };
+        
+        runProductUpsert();
+        return;
       }
       
       supabase.from(mappedTable).upsert(payload, { onConflict: 'id' }).then(({ error }) => {
@@ -1029,32 +1059,74 @@ export async function update(refObj: any, value: any) {
       const payloads: any[] = [];
       
       if (mappedTable === 'products') {
-        const productsNeedCat = items.filter(it => !it.value.category_id && !it.value.categoryId);
-        if (productsNeedCat.length > 0) {
-          const categoriesDict = dbState['categories'] || {};
-          let firstCatId = Object.keys(categoriesDict)[0];
-          if (!firstCatId) {
-            firstCatId = 'uncategorized';
-            if (!dbState['categories']) dbState['categories'] = {};
-            dbState['categories'][firstCatId] = {
-              id: firstCatId,
-              name: 'Sans catégorie',
-              level: 1
-            };
-            saveStateToStorage();
-            triggerObservers('categories');
-            triggerObservers(`categories/${firstCatId}`);
+        const categoriesDict = dbState['categories'] || {};
+        let firstCatId = Object.keys(categoriesDict)[0];
+        if (!firstCatId) {
+          firstCatId = 'uncategorized';
+          if (!dbState['categories']) dbState['categories'] = {};
+          dbState['categories'][firstCatId] = {
+            id: firstCatId,
+            name: 'Sans catégorie',
+            level: 1
+          };
+          saveStateToStorage();
+          triggerObservers('categories');
+          triggerObservers(`categories/${firstCatId}`);
+        }
+
+        // 1. Gather all categories used in the products being synced
+        const categoriesToSync = new Set<string>();
+        for (const item of items) {
+          let catId = item.value.category_id || item.value.categoryId;
+          if (!catId) {
+            item.value.category_id = firstCatId;
+            item.value.categoryId = firstCatId;
+            catId = firstCatId;
           }
-          
-          const catPayload = preparePayload('categories', firstCatId, dbState['categories'][firstCatId]);
-          await supabase.from('categories').upsert(catPayload, { onConflict: 'id' }).then(({ error }) => {
-            if (error) handleSupabaseError('categories', 'Fallback', error);
-          });
-          
-          for (const item of items) {
-            if (!item.value.category_id && !item.value.categoryId) {
-              item.value.category_id = firstCatId;
-              item.value.categoryId = firstCatId;
+          categoriesToSync.add(catId);
+        }
+
+        // 2. Sync used categories first
+        for (const catId of categoriesToSync) {
+          const catObj = dbState['categories'] ? dbState['categories'][catId] : null;
+          if (catObj) {
+            const catPayload = preparePayload('categories', catId, catObj);
+            await supabase.from('categories').upsert(catPayload, { onConflict: 'id' }).then(({ error }) => {
+              if (error) handleSupabaseError('categories', 'Fallback', error);
+            });
+          } else {
+            // Category has value but doesn't exist in local categories state, fallback to firstCatId
+            for (const item of items) {
+              const itemCat = item.value.category_id || item.value.categoryId;
+              if (itemCat === catId) {
+                item.value.category_id = firstCatId;
+                item.value.categoryId = firstCatId;
+              }
+            }
+            const defaultCatObj = dbState['categories'][firstCatId];
+            if (defaultCatObj) {
+              const catPayload = preparePayload('categories', firstCatId, defaultCatObj);
+              await supabase.from('categories').upsert(catPayload, { onConflict: 'id' }).then(({ error }) => {
+                if (error) handleSupabaseError('categories', 'Fallback', error);
+              });
+            }
+          }
+        }
+
+        // 3. Sync used brands first
+        for (const item of items) {
+          const brandId = item.value.brand_id || item.value.brandId;
+          if (brandId) {
+            const brandObj = dbState['brands'] ? dbState['brands'][brandId] : null;
+            if (brandObj) {
+              const brandPayload = preparePayload('brands', brandId, brandObj);
+              await supabase.from('brands').upsert(brandPayload, { onConflict: 'id' }).then(({ error }) => {
+                if (error) handleSupabaseError('brands', 'Fallback', error);
+              });
+            } else {
+              // Brand doesn't exist, clear to avoid foreign key violation
+              item.value.brand_id = null;
+              item.value.brandId = null;
             }
           }
         }

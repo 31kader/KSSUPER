@@ -374,85 +374,206 @@ export const printReceipt = async (t: any, settings: CompanySettings) => {
   }
 };
 
-export const printLabel = (p: Product, settings: CompanySettings) => {
-  const printWindow = window.open('', '_blank');
-  if (!printWindow) return;
+export const printLabels = (products: Product[], settings: CompanySettings) => {
+  const useSilent = settings.silentPrinting;
 
-  const tpl = settings.labelTemplate || 'standard';
-  const width = tpl === 'shelf-large' ? '80mm' : tpl === 'shelf-standard' ? '40mm' : '60mm';
-  const height = tpl === 'shelf-standard' ? '30mm' : '40mm';
+  let printWindow: Window | null = null;
+  let iframe: HTMLIFrameElement | null = null;
+  let doc: Document | null = null;
 
-  let contentHtml = '';
-  if (tpl === 'price-only') {
-    contentHtml = `<div class="price-only">${p.price.toFixed(2)} ${settings.currency}</div>`;
-  } else if (tpl === 'shelf-standard') {
-    contentHtml = `
-      <div class="shelf-tag shelf-standard">
-        <div class="name">${p.name}</div>
-        <div class="main-price">${p.price.toFixed(2)} <span class="currency">${settings.currency}</span></div>
-        <div class="footer-meta">
-          <div id="qr"></div>
-          <div class="ref">REF: ${p.sku || p.id.slice(-6).toUpperCase()}</div>
-        </div>
-      </div>
-    `;
-  } else if (tpl === 'shelf-large') {
-    contentHtml = `
-      <div class="shelf-tag shelf-large">
-        <div class="brand">${settings.name}</div>
-        <div class="name">${p.name}</div>
-        <div class="price-row">
-          <div class="main-price">${p.price.toFixed(2)} <span class="currency">${settings.currency}</span></div>
-          <div class="unit-price">${(p.price / 1).toFixed(2)} ${settings.currency}/${p.unit || 'u'}</div>
-        </div>
-        <div class="barcode-row">
-          <div id="qr"></div>
-          <div class="sku">${p.sku || p.id}</div>
-        </div>
-      </div>
-    `;
-  } else if (tpl === 'shelf-promo') {
-    contentHtml = `
-      <div class="shelf-tag shelf-promo">
-        <div class="promo-badge">PROMO</div>
-        <div class="name">${p.name}</div>
-        <div class="price-box">
-          <div class="old-price">${(p.price * 1.2).toFixed(2)} ${settings.currency}</div>
-          <div class="new-price">${p.price.toFixed(2)} <span>${settings.currency}</span></div>
-        </div>
-      </div>
-    `;
-  } else if (tpl === 'barcode-only') {
-    contentHtml = `<div class="label-standard"><div id="qr" class="qr-box"></div><div class="sku">${p.sku}</div></div>`;
+  if (useSilent) {
+    iframe = document.getElementById('print-iframe') as HTMLIFrameElement;
+    if (!iframe) {
+      iframe = document.createElement('iframe');
+      iframe.id = 'print-iframe';
+      iframe.style.position = 'fixed';
+      iframe.style.right = '0';
+      iframe.style.bottom = '0';
+      iframe.style.width = '0';
+      iframe.style.height = '0';
+      iframe.style.border = '0';
+      document.body.appendChild(iframe);
+    }
+    doc = iframe.contentWindow?.document || iframe.contentDocument;
   } else {
-    contentHtml = `
-      <div class="label-standard" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%;">
-        <div class="name" style="font-weight: bold; font-size: 11px; margin-bottom: 2px;">${p.name}</div>
-        <div style="display: flex; align-items: center; justify-content: center; gap: 8px; margin: 2px 0;">
-          ${(p.imageUrl || p.image) ? `<img src="${p.imageUrl || p.image}" style="width: 28px; height: 28px; object-fit: cover; border-radius: 4px; border: 1.5px solid #ddd;" referrerpolicy="no-referrer" />` : ''}
-          <div class="price" style="font-size: 16px; font-weight: 900; margin: 0;">${p.price.toFixed(2)} ${settings.currency}</div>
-        </div>
-        <div id="qr" class="qr-box" style="display: flex; justify-content: center; margin: 2px 0;"></div>
-        <div class="sku" style="font-size: 8px; color: #666; margin-top: 2px;">${p.sku || p.id}</div>
-      </div>
-    `;
+    printWindow = window.open('', '_blank', 'width=800,height=600');
+    if (!printWindow) return;
+    doc = printWindow.document;
   }
 
-  printWindow.document.write(`
+  if (!doc) return;
+
+  const tpl = settings.labelTemplate || 'standard';
+  
+  // Base/unrotated width and height
+  const defaultWidthNum = tpl === 'shelf-large' ? 80 : tpl === 'shelf-standard' ? 40 : 60;
+  const defaultHeightNum = tpl === 'shelf-standard' ? 30 : 40;
+
+  const uWidthNum = settings.labelWidthCustom || defaultWidthNum;
+  const uHeightNum = settings.labelHeightCustom || defaultHeightNum;
+
+  // Render Dimensions (width and height swapped if portrait, e.g. for label feeding rolls)
+  let widthVal = uWidthNum;
+  let heightVal = uHeightNum;
+  if (settings.labelOrientation === 'portrait') {
+    widthVal = uHeightNum;
+    heightVal = uWidthNum;
+  }
+
+  const width = `${widthVal}mm`;
+  const height = `${heightVal}mm`;
+  // Force rotation as requested or use settings
+  const rot = settings.labelRotation && settings.labelRotation !== '0' ? settings.labelRotation : '90';
+
+  let labelsHtml = '';
+
+  products.forEach((p) => {
+    let contentHtml = '';
+    const skuForBarcode = p.sku || p.id.substring(0, 8).toUpperCase();
+
+    if (tpl === 'price-only') {
+      contentHtml = `<div class="price-only">${p.price.toFixed(2)} ${settings.currency}</div>`;
+    } else if (tpl === 'shelf-standard') {
+      contentHtml = `
+        <div class="shelf-tag shelf-standard">
+          <div class="name">${p.name}</div>
+          <div class="main-price">${p.price.toFixed(2)} <span class="currency">${settings.currency}</span></div>
+          <div class="footer-meta">
+            <div class="qr-box" data-value="${p.sku || p.id}"></div>
+            <div class="ref">REF: ${p.sku || p.id.slice(-6).toUpperCase()}</div>
+          </div>
+        </div>
+      `;
+    } else if (tpl === 'shelf-large') {
+      contentHtml = `
+        <div class="shelf-tag shelf-large">
+          <div class="brand">${settings.name}</div>
+          <div class="name">${p.name}</div>
+          <div class="price-row">
+            <div class="main-price">${p.price.toFixed(2)} <span class="currency">${settings.currency}</span></div>
+            <div class="unit-price">${(p.price / 1).toFixed(2)} ${settings.currency}/${p.unit || 'u'}</div>
+          </div>
+          <div class="barcode-row">
+            <div class="qr-box" data-value="${p.sku || p.id}"></div>
+            <div class="sku">${p.sku || p.id}</div>
+          </div>
+        </div>
+      `;
+    } else if (tpl === 'shelf-promo') {
+      contentHtml = `
+        <div class="shelf-tag shelf-promo">
+          <div class="promo-badge">PROMO</div>
+          <div class="name">${p.name}</div>
+          <div class="price-box">
+            <div class="old-price">${(p.price * 1.2).toFixed(2)} ${settings.currency}</div>
+            <div class="new-price">${p.price.toFixed(2)} <span>${settings.currency}</span></div>
+          </div>
+        </div>
+      `;
+    } else if (tpl === 'barcode-only') {
+      contentHtml = `
+        <div class="label-standard" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%;">
+          <svg class="barcode-box" data-value="${skuForBarcode}"></svg>
+        </div>
+      `;
+    } else {
+      // standard template
+      contentHtml = `
+        <div class="label-standard" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%;">
+          <div class="name" style="font-weight: bold; font-size: 11px; margin-bottom: 2px;">${p.name}</div>
+          <div style="display: flex; align-items: center; justify-content: center; gap: 8px; margin: 2px 0;">
+            ${(p.imageUrl || p.image) ? `<img src="${p.imageUrl || p.image}" style="width: 28px; height: 28px; object-fit: cover; border-radius: 4px; border: 1.5px solid #ddd;" referrerpolicy="no-referrer" />` : ''}
+            <div class="price" style="font-size: 16px; font-weight: 900; margin: 0;">${p.price.toFixed(2)} ${settings.currency}</div>
+          </div>
+          <svg class="barcode-box" data-value="${skuForBarcode}"></svg>
+          <div class="sku" style="font-size: 8px; color: #666; margin-top: 2px;">${p.sku || p.id}</div>
+        </div>
+      `;
+    }
+
+    labelsHtml += `
+      <div class="label-container">
+        <div class="label-wrapper rot-${rot}">
+          ${contentHtml}
+        </div>
+      </div>
+    `;
+  });
+
+  doc.open();
+  doc.write(`
     <html>
       <head>
-        <title>Étiquette - ${p.name}</title>
+        <title>Etiquettes</title>
         <style>
-          @page { margin: 0; }
+          @page { 
+            size: ${width} ${height} !important; 
+            margin: 0 !important; 
+          }
           * { box-sizing: border-box; }
-          body { 
-            margin: 0; 
-            padding: 0; 
-            width: ${width}; 
-            height: ${height};
+          html, body { 
+            margin: 0 !important; 
+            padding: 0 !important; 
+            background: white !important;
             font-family: sans-serif;
+            width: ${width} !important;
+            height: ${height} !important;
+            overflow: hidden !important;
+          }
+          .label-container {
+            width: ${width} !important; 
+            height: ${height} !important;
+            padding: 0;
+            margin: 0;
+            box-sizing: border-box;
             background: white;
+            position: absolute !important;
+            top: 0 !important;
+            left: 0 !important;
             overflow: hidden;
+            page-break-after: always;
+            break-after: page;
+            page-break-inside: avoid;
+            break-inside: avoid;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+          }
+          .label-wrapper {
+            box-sizing: border-box;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+            background: white;
+          }
+          .label-wrapper.rot-90 {
+            width: ${uHeightNum}mm;
+            height: ${uWidthNum}mm;
+            transform: rotate(90deg);
+            transform-origin: center center;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) rotate(90deg);
+          }
+          .label-wrapper.rot-180 {
+            width: 100%;
+            height: 100%;
+            transform: rotate(180deg);
+          }
+          .label-wrapper.rot-270 {
+            width: ${uHeightNum}mm;
+            height: ${uWidthNum}mm;
+            transform: rotate(270deg);
+            transform-origin: center center;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) rotate(270deg);
           }
           .shelf-tag { width: 100%; height: 100%; padding: 5px; border: 1px solid #ddd; position: relative; }
           .shelf-standard .name { font-size: 10px; font-weight: bold; margin-bottom: 2px; height: 2.4em; overflow: hidden; text-align: left; }
@@ -473,8 +594,8 @@ export const printLabel = (p: Product, settings: CompanySettings) => {
           .shelf-promo .price-box { margin-top: 5px; text-align: left; }
           .shelf-promo .old-price { font-size: 11px; text-decoration: line-through; color: #991b1b; }
           .shelf-promo .new-price { font-size: 24px; font-weight: 900; color: #ef4444; }
-          .label-standard { text-align: center; padding: 5px; }
-          .label-standard .name { font-weight: bold; font-size: 11px; margin-bottom: 2px; }
+          .label-standard { text-align: center; height: 100%; display: flex; flex-direction: column; justify-content: space-between; align-items: center; padding: 2px; }
+          .label-standard .name { font-weight: bold; font-size: 11px; margin-bottom: 2px; width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
           .label-standard .price { font-size: 16px; font-weight: 900; margin-bottom: 4px; }
           .label-standard .qr-box { display: flex; justify-content: center; }
           .label-standard .sku { font-size: 8px; color: #666; margin-top: 2px; }
@@ -482,25 +603,60 @@ export const printLabel = (p: Product, settings: CompanySettings) => {
         </style>
       </head>
       <body>
-        ${contentHtml}
+        ${labelsHtml}
         <script src="https://unpkg.com/qrcode-generator@1.4.4/qrcode.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
         <script>
           window.onload = () => {
-            const qrBox = document.getElementById('qr');
-            if (qrBox) {
-              const qr = qrcode(0, 'M');
-              qr.addData('${p.sku || p.id}');
-              qr.make();
-              qrBox.innerHTML = qr.createSvgTag(${tpl === 'shelf-standard' ? 1.5 : 2.5}, 0);
-            }
+            // Generate QRs
+            document.querySelectorAll('.qr-box').forEach(el => {
+              const val = el.getAttribute('data-value');
+              if (val) {
+                const qr = qrcode(0, 'M');
+                qr.addData(val);
+                qr.make();
+                el.innerHTML = qr.createSvgTag(${tpl === 'shelf-standard' ? 1.5 : 2.5}, 0);
+              }
+            });
+
+            // Generate Barcodes
+            document.querySelectorAll('.barcode-box').forEach(el => {
+              const val = el.getAttribute('data-value');
+              if (val) {
+                try {
+                  JsBarcode(el, val, {
+                    format: "CODE128",
+                    width: 1.2,
+                    height: 30,
+                    displayValue: true,
+                    fontSize: 10,
+                    margin: 0
+                  });
+                } catch(e) {
+                  console.error(e);
+                }
+              }
+            });
+
             window.print();
-            setTimeout(() => window.close(), 500);
+            ${useSilent ? '' : 'setTimeout(() => window.close(), 500);'}
           };
         </script>
       </body>
     </html>
   `);
-  printWindow.document.close();
+  doc.close();
+
+  if (useSilent && iframe?.contentWindow) {
+    try {
+      iframe.contentWindow.focus();
+      iframe.contentWindow.print();
+    } catch (e) {}
+  }
+};
+
+export const printLabel = (p: Product, settings: CompanySettings) => {
+  printLabels([p], settings);
 };
 
 export const printPurchaseOrder = (purchase: any, settings: CompanySettings) => {

@@ -1,6 +1,6 @@
 {
-  "name": "Remix: Nexus POS Pro",
-  "description": "Système de point de vente professionnel avec gestion d\u0027inventaire, rapports de ventes en temps réel et gestion client.",
+  "name": "Nexus POS Pro",
+  "description": "Système de point de vente professionnel (Web & Android) avec gestion d'inventaire, rapports de ventes en temps réel et gestion client.",
   "requestFramePermissions": [
     "camera"
   ],

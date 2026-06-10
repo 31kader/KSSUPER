@@ -19,6 +19,7 @@ import {
 import { Button, Card, Modal, ConfirmDialog, SortableHeader } from './ui';
 import { cn, formatSafe } from '../lib/utils';
 import { DEFAULT_PERMISSIONS } from '../constants';
+import { getApiUrl } from '../lib/api';
 
 export const AttendanceTab = memo(function AttendanceTab({ 
   attendance, 
@@ -1692,7 +1693,7 @@ export const Employees = memo(function Employees({ employees, transactions, atte
 
         try {
           const idToken = auth.currentUser?.getIdToken ? await auth.currentUser.getIdToken() : 'mock-token';
-          const response = await fetch('/api/employees/sync-auth', {
+          const response = await fetch(getApiUrl('/api/employees/sync-auth'), {
             method: 'POST',
             headers: { 
               'Content-Type': 'application/json',

@@ -4,7 +4,7 @@ import { Package, Tag, RefreshCw, LayoutGrid, Plus, FileSpreadsheet, Upload, Sho
 import { supabase } from '../supabase';
 import { Button, Card, Modal, ConfirmDialog, BlurCard, SortableHeader } from './ui';
 import { Product, Category, Brand, StockAdjustment, CompanySettings, SupplierSync, Supplier, Purchase, Transaction, OnlineOrder, Employee, Customer, CartItem, ProductReturn, RolePermissions, Promotion, Voucher, PurchaseOrder, POSSession } from '../types';
-import { cn, logAction, safeDate, exportToExcel, getHierarchicalCategories, formatSafe, exportToCSV, generateUniqueId, isLocked, formatProductStock, calculateItemPrice } from '../lib/utils';
+import { cn, logAction, safeDate, exportToExcel, getHierarchicalCategories, formatSafe, exportToCSV, generateUniqueId, isLocked, formatProductStock, calculateItemPrice, sanitizeProductForSupabase } from '../lib/utils';
 import { printReceipt, printPurchaseOrder } from '../services/printService';
 import { format, parseISO, isWithinInterval, startOfDay, endOfDay, isToday, subDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -114,7 +114,7 @@ export function QuickAddProductModal({
         updatedAt: new Date().toISOString()
       };
       
-      const { error: insertError } = await supabase.from('products').insert(newProduct);
+      const { error: insertError } = await supabase.from('products').insert(sanitizeProductForSupabase(newProduct));
       if (insertError) throw insertError;
       
       logAction(user?.uid || 'pos', user?.displayName || 'Utilisateur', 'Ajout Rapide', 'POS', `Produit ajouté via POS: ${name} (${barcode})`);

@@ -31,7 +31,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../supabase';
 import { Transaction, CompanySettings, UserProfile, AuditLog } from '../types';
-import { cn } from '../lib/utils';
+import { cn, logAction } from '../lib/utils';
 import { Card, Button } from './ui';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -176,17 +176,15 @@ export function CameraPortal({ settings, user }: CameraPortalProps) {
       }
 
       // If suspicious, create an audit log to alert manager
-           if (status === 'suspicious') {
-        const logData: Omit<AuditLog, 'id'> = {
-           userId: user.id!,
-           userName: user.displayName!,
-           action: `SUSPICIOUS_TRANSACTION_REPORTED`,
-           module: `CAMERA_AUDIT`,
-           details: `Transaction ${txId} marked as suspicious by camera agent.`,
-           timestamp: new Date().toISOString(),
-           severity: 'high'
-        };
-        await supabase.from('audit_logs').insert({...logData, id: Math.random().toString(36).substring(2, 10)});
+      if (status === 'suspicious') {
+        await logAction(
+          user.id!,
+          user.displayName!,
+          `SUSPICIOUS_TRANSACTION_REPORTED`,
+          `CAMERA_AUDIT`,
+          `Transaction ${txId} marked as suspicious by camera agent.`,
+          'critical'
+        );
       }
     } catch (error) {
       console.error("Error auditing transaction:", error);
@@ -196,16 +194,14 @@ export function CameraPortal({ settings, user }: CameraPortalProps) {
   const callManager = async () => {
     if (!selectedTransaction) return;
     try {
-      const alertData: Omit<AuditLog, 'id'> = {
-        userId: user.id!,
-        userName: user.displayName!,
-        action: `MANAGER_CALL_REQUEST`,
-        module: `EMERGENCY_BIP`,
-        details: `AGENT CAMERA ${user.displayName} demande une intervention urgente sur la vente ${selectedTransaction.id}.`,
-        timestamp: new Date().toISOString(),
-        severity: 'critical'
-      };
-      await supabase.from('audit_logs').insert({...alertData, id: Math.random().toString(36).substring(2, 10)});
+      await logAction(
+        user.id!,
+        user.displayName!,
+        `MANAGER_CALL_REQUEST`,
+        `EMERGENCY_BIP`,
+        `AGENT CAMERA ${user.displayName} demande une intervention urgente sur la vente ${selectedTransaction.id}.`,
+        'critical'
+      );
       alert("Manager appelé ! Son écran va vibrer.");
     } catch (e) {
       console.error("Error calling manager:", e);

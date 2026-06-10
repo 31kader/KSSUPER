@@ -1,8 +1,9 @@
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import { Printer, Minus, Plus, Search } from 'lucide-react';
 import { Product, CompanySettings } from '../types';
 import { Button } from './ui';
 import Barcode from 'react-barcode';
+import { printLabels } from '../services/printService';
 
 export interface LabelPrinterProps {
   products: Product[];
@@ -12,98 +13,117 @@ export interface LabelPrinterProps {
 
 export const SingleLabel = ({ product, currency }: { product: Product, currency?: string }) => {
   return (
-    <div className="label-container">
-      <div className="label-title">
-        {product.name}
-      </div>
+    <div style={{ 
+      width: '40mm', 
+      height: '30mm', 
+      position: 'relative',
+      overflow: 'hidden',
+      backgroundColor: '#fff',
+      padding: '0', 
+      boxSizing: 'border-box',
+      display: 'flex',
+      flexDirection: 'column',
+      justifyContent: 'center',
+      alignItems: 'center',
+      color: '#000',
+      fontFamily: 'Arial, sans-serif',
       
-      <div className="label-price">
-        {product.price.toFixed(2)} {currency || '€'}
-      </div>
+      // Gestion stricte des sauts de page pour l'imprimante thermique
+      breakAfter: 'page',       /* Standard moderne */
+      pageBreakAfter: 'always',  /* Ancien standard (toujours utile) */
+      breakInside: 'avoid',
+      pageBreakInside: 'avoid',
+      margin: 0
+    }}>
+      {/* Container de rotation pour l'impression */}
+      <div style={{
+        width: '30mm',
+        height: '40mm',
+        position: 'absolute',
+        top: '50%',
+        left: '50%',
+        transform: 'translate(-50%, -50%) rotate(90deg)',
+        WebkitTransform: 'translate(-50%, -50%) rotate(90deg)',
+        padding: '2mm',
+        boxSizing: 'border-box',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        backgroundColor: '#fff'
+      }}>
+        <div style={{
+          fontSize: '12px',
+          fontWeight: 'bold',
+          textAlign: 'center',
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          width: '100%'
+        }}>
+          {product.name}
+        </div>
+        
+        <div style={{
+          fontSize: '16px',
+          fontWeight: 'bold',
+          textAlign: 'center',
+          marginTop: '2mm',
+          marginBottom: '2mm'
+        }}>
+          {product.price.toFixed(2)} {currency || '€'}
+        </div>
 
-      <div className="label-barcode">
-        <div style={{ transform: 'scale(0.8)', transformOrigin: 'top center' }}>
-          <Barcode 
-            value={product.sku || product.id.substring(0,6).toUpperCase()} 
-            format="CODE128" 
-            width={1.2} 
-            height={30} 
-            margin={0} 
-            displayValue={true} 
-            fontSize={12}
-          />
+        <div style={{ display: 'flex', justifyContent: 'center', overflow: 'hidden', width: '100%' }}>
+          <div style={{ transform: 'scale(0.8)', transformOrigin: 'top center' }}>
+            <Barcode 
+              value={product.sku || product.id.substring(0,6).toUpperCase()} 
+              format="CODE128" 
+              width={1.2} 
+              height={30} 
+              margin={0} 
+              displayValue={true} 
+              fontSize={12}
+            />
+          </div>
         </div>
       </div>
     </div>
   );
 };
 
-// Returns style string, but we will inject this via <style> tag
+// Retourne la chaîne de styles pour l'impression
 export const getCommonStyles = () => `
   @media print {
     @page { 
-      size: 40mm 30mm;
-      margin: 0 !important;
+      size: 40mm 30mm !important;
+      margin: 0 !important; /* Supprime les en-têtes et pieds de page du navigateur */
     }
-
     html, body { 
       margin: 0 !important; 
       padding: 0 !important; 
       width: 40mm !important;
       height: 30mm !important;
-      overflow: hidden;
+      overflow: hidden !important;
       background: #fff;
       -webkit-print-color-adjust: exact !important;
       print-color-adjust: exact !important;
     }
-
-    .label-container {
+    /* Sécurité pour éviter qu'un conteneur global React ne casse le flux */
+    #root, __next, #__next, .App {
       width: 40mm !important;
       height: 30mm !important;
-      max-width: 40mm !important;
-      max-height: 30mm !important;
-      box-sizing: border-box !important;
-      padding: 2mm;
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-      align-items: center;
-      background: #fff;
-      color: #000;
-      font-family: Arial, sans-serif;
-      page-break-after: always;
-      page-break-inside: avoid;
       margin: 0 !important;
+      padding: 0 !important;
+      display: block !important;
+      position: absolute !important;
+      top: 0 !important;
+      left: 0 !important;
     }
-
-    .label-title {
-      font-size: 12px;
-      font-weight: bold;
-      text-align: center;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      width: 100%;
-    }
-    
-    .label-price {
-      font-size: 16px;
-      font-weight: bold;
-      text-align: center;
-      margin-top: 2mm;
-      margin-bottom: 2mm;
-    }
-
-    .label-barcode {
-      display: flex;
-      justify-content: center;
-      overflow: hidden;
-      width: 100%;
-    }
-
     img, svg, .barcode {
       max-width: 100% !important;
       height: auto !important;
+      display: block; /* Évite les espaces vides sous l'image */
     }
   }
 `;
@@ -113,44 +133,9 @@ export function LabelPrinter({ products, settings, initialSelectedProductIds = [
     initialSelectedProductIds.map(id => ({ productId: id, quantity: 1 }))
   );
   const [search, setSearch] = useState('');
-  const printRef = useRef<HTMLDivElement>(null);
 
   const handlePrint = () => {
-    const printContent = printRef.current;
-    if (!printContent) return;
-    
-    // Create a new window for printing to isolate content
-    const printWindow = window.open('', '_blank', 'width=600,height=600');
-    if (!printWindow) {
-      alert("⚠️ Veuillez autoriser les fenêtres contextuelles (pop-ups) pour imprimer.");
-      return;
-    }
-    
-    const html = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Impression</title>
-          <style>
-            ${getCommonStyles()}
-            /* Force hiding anything not in print-container */
-            body { margin: 0; padding: 0; }
-          </style>
-        </head>
-        <body>
-          ${printContent.innerHTML}
-          <script>
-            window.onload = () => {
-              window.print();
-              window.close();
-            };
-          </script>
-        </body>
-      </html>
-    `;
-    
-    printWindow.document.write(html);
-    printWindow.document.close();
+    printLabels(itemsToPrint, settings);
   };
 
 
@@ -259,14 +244,6 @@ export function LabelPrinter({ products, settings, initialSelectedProductIds = [
         </div>
       </div>
 
-      <div style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden' }}>
-        <div ref={printRef}>
-          <style>{getCommonStyles()}</style>
-          {itemsToPrint.map((item, idx) => (
-            <SingleLabel key={'print-'+idx} product={item} currency={settings.currency} />
-          ))}
-        </div>
-      </div>
     </div>
   );
 }

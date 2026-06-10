@@ -42,6 +42,10 @@ export function Settings({ settings }: { settings: CompanySettings }) {
     taxNumber: settings.taxNumber || '',
     receiptTemplate: settings.receiptTemplate || 'standard',
     labelTemplate: settings.labelTemplate || 'standard',
+    labelOrientation: settings.labelOrientation || 'landscape',
+    labelRotation: settings.labelRotation || '0',
+    labelWidthCustom: settings.labelWidthCustom ?? 60,
+    labelHeightCustom: settings.labelHeightCustom ?? 40,
     currency: settings.currency || 'FCFA',
     taxRate: settings.taxRate ?? 18,
     loyaltyPointsPerCurrencyUnit: settings.loyaltyPointsPerCurrencyUnit ?? 1,
@@ -880,6 +884,50 @@ export function Settings({ settings }: { settings: CompanySettings }) {
                     <option value="shelf-promo">Rayon Promo</option>
                   </select>
                 </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">Orientation d'Étiquette</label>
+                  <select 
+                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
+                    value={formData.labelOrientation || 'landscape'}
+                    onChange={e => setFormData({...formData, labelOrientation: e.target.value as any})}
+                  >
+                    <option value="landscape">Paysage (Horizontal)</option>
+                    <option value="portrait">Portrait (Vertical - Pivoté)</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">Rotation (Pivotement)</label>
+                  <select 
+                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
+                    value={formData.labelRotation || '0'}
+                    onChange={e => setFormData({...formData, labelRotation: e.target.value as any})}
+                  >
+                    <option value="0">Normal (0°)</option>
+                    <option value="90">90° à Droite</option>
+                    <option value="180">180° (Retourné)</option>
+                    <option value="270">90° à Gauche (270°)</option>
+                  </select>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase">Largeur (mm)</label>
+                    <input 
+                      type="number"
+                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
+                      value={formData.labelWidthCustom ?? 60}
+                      onChange={e => setFormData({...formData, labelWidthCustom: Number(e.target.value)})}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase">Hauteur (mm)</label>
+                    <input 
+                      type="number"
+                      className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
+                      value={formData.labelHeightCustom ?? 40}
+                      onChange={e => setFormData({...formData, labelHeightCustom: Number(e.target.value)})}
+                    />
+                  </div>
+                </div>
               </div>
             </div>
             
@@ -1019,6 +1067,50 @@ export function Settings({ settings }: { settings: CompanySettings }) {
                   <option value="shelf-large">Rayon Supermarché (80x50mm)</option>
                   <option value="shelf-promo">Rayon Promo (Rouge)</option>
                 </select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-slate-700">Orientation d'Étiquette</label>
+                <select 
+                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                  value={formData.labelOrientation || 'landscape'}
+                  onChange={e => setFormData({...formData, labelOrientation: e.target.value as any})}
+                >
+                  <option value="landscape">Paysage (Horizontal)</option>
+                  <option value="portrait">Portrait (Vertical - Pivoté)</option>
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-slate-700">Rotation d'Étiquette (Pivotement)</label>
+                <select 
+                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                  value={formData.labelRotation || '0'}
+                  onChange={e => setFormData({...formData, labelRotation: e.target.value as any})}
+                >
+                  <option value="0">Normal (0°)</option>
+                  <option value="90">90° à Droite</option>
+                  <option value="180">180° (Retourné)</option>
+                  <option value="270">90° à Gauche (270°)</option>
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-slate-700">Largeur (mm)</label>
+                  <input 
+                    type="number"
+                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                    value={formData.labelWidthCustom ?? 60}
+                    onChange={e => setFormData({...formData, labelWidthCustom: Number(e.target.value)})}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-slate-700">Hauteur (mm)</label>
+                  <input 
+                    type="number"
+                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                    value={formData.labelHeightCustom ?? 40}
+                    onChange={e => setFormData({...formData, labelHeightCustom: Number(e.target.value)})}
+                  />
+                </div>
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-semibold text-slate-700">Devise (Symbole)</label>

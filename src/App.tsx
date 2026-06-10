@@ -654,13 +654,37 @@ export default function App() {
     setIsPOSCustomerModalOpen(false);
   };
   
-  const expiringProducts = useMemo(() => products.filter(p => {
-    if (!p.expirationDate || p.stock <= 0) return false;
-    const expDate = new Date(p.expirationDate);
-    const now = new Date();
-    const diffDays = Math.ceil((expDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-    return diffDays <= 30; // Alert if within 30 days
-  }), [products]);
+  const expiringProducts = useMemo(() => {
+    const list: any[] = [];
+    products.forEach(p => {
+      if (p.useMultiExpiry && p.batches && p.batches.length > 0) {
+        p.batches.forEach(b => {
+          if (b.stock <= 0 || !b.expirationDate) return;
+          const expDate = new Date(b.expirationDate);
+          const now = new Date();
+          const diffDays = Math.ceil((expDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+          if (diffDays <= 30) {
+            list.push({
+              ...p,
+              id: `${p.id}-batch-${b.id}`,
+              name: `${p.name} (Lot: ${b.batchNumber})`,
+              expirationDate: b.expirationDate,
+              stock: b.stock
+            });
+          }
+        });
+      } else {
+        if (!p.expirationDate || p.stock <= 0) return;
+        const expDate = new Date(p.expirationDate);
+        const now = new Date();
+        const diffDays = Math.ceil((expDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+        if (diffDays <= 30) {
+          list.push(p);
+        }
+      }
+    });
+    return list;
+  }, [products]);
 
   const lowStockProducts = products.filter(p => p.stock <= p.minStock);
   const currentEmployee = employees.find(e => e.email === user?.email);

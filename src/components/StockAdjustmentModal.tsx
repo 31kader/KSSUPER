@@ -4,6 +4,7 @@ import { supabase } from '../supabase';
 import { Product, CompanySettings } from '../types';
 import { Button, Modal } from './ui';
 import { toast } from 'sonner';
+import { sanitizeProductForSupabase } from '../lib/utils';
 
 export function StockAdjustmentModal({ 
   isOpen, onClose, product, user, settings 
@@ -11,6 +12,7 @@ export function StockAdjustmentModal({
   isOpen: boolean, onClose: () => void, product: Product | null, user: any, settings: CompanySettings 
 }) {
   const [newStock, setNewStock] = useState<number | ''>('');
+  const [localBatches, setLocalBatches] = useState<any[]>([]);
   const [reason, setReason] = useState('Ajustement manuel');
   const [isProcessing, setIsProcessing] = useState(false);
   const [isLoss, setIsLoss] = useState(false);
@@ -20,8 +22,19 @@ export function StockAdjustmentModal({
   useEffect(() => {
     if (product) {
       setNewStock(product.stock || 0);
+      setLocalBatches(product.batches ? product.batches.map(b => ({ ...b })) : []);
     }
   }, [product]);
+
+  const handleLocalBatchStockChange = (index: number, value: string) => {
+    const val = value === '' ? 0 : parseFloat(value);
+    const updated = localBatches.map((b, i) => i === index ? { ...b, stock: isNaN(val) ? 0 : val } : b);
+    setLocalBatches(updated);
+    
+    // Sum them up
+    const total = updated.reduce((sum, item) => sum + item.stock, 0);
+    setNewStock(total);
+  };
 
   useEffect(() => {
     if (!isLossCheckboxVisible) {
@@ -45,14 +58,32 @@ export function StockAdjustmentModal({
       const delta = (newStock as number) - currentStock;
       const isLossRecord = delta < 0 && isLoss;
       
+      let earliestDate = product.expirationDate;
+      let primaryBatch = product.batchNumber;
+      if (product.useMultiExpiry && localBatches.length > 0) {
+        const sorted = [...localBatches].sort((a, b) => new Date(a.expirationDate).getTime() - new Date(b.expirationDate).getTime());
+        earliestDate = sorted[0].expirationDate;
+        primaryBatch = sorted[0].batchNumber;
+      }
+
       // Update product stocks
+      const updatedProduct = {
+        ...product,
+        stock: newStock,
+        batches: product.useMultiExpiry ? localBatches : (product.batches || null),
+        expirationDate: earliestDate,
+        batchNumber: primaryBatch,
+        damagedStock: isLossRecord ? (product.damagedStock || 0) + Math.abs(delta) : (product.damagedStock || 0),
+        updatedAt: new Date().toISOString()
+      };
+
+      // Optimistic cache update for immediate local reflection
+      window.dispatchEvent(new CustomEvent('product-cache-update', { detail: updatedProduct }));
+
+      // Cleaned update for Supabase schema safety
       const { error: prodError } = await supabase
         .from('products')
-        .update({
-          stock: newStock,
-          damagedStock: isLossRecord ? (product.damagedStock || 0) + Math.abs(delta) : undefined,
-          updatedAt: new Date().toISOString()
-        })
+        .update(sanitizeProductForSupabase(updatedProduct))
         .eq('id', product.id);
       if (prodError) throw prodError;
 
@@ -118,20 +149,55 @@ export function StockAdjustmentModal({
 
         <div className="space-y-6">
           <div className="space-y-2">
-            <label className="text-[10px] font-black text-white/30 uppercase tracking-[0.3em] pl-2">Inventaire Réel (Nouveau Stock)</label>
+            <label className="text-[10px] font-black text-white/30 uppercase tracking-[0.3em] pl-2">
+              Inventaire Réel (Nouveau Stock) {product.useMultiExpiry && <span className="text-indigo-400 lowercase italic">(somme des lots)</span>}
+            </label>
             <div className="relative group">
               <input 
                 required
                 type="number"
                 step="0.01"
                 value={newStock}
+                disabled={product.useMultiExpiry}
                 onChange={e => setNewStock(e.target.value === '' ? '' : parseFloat(e.target.value))}
                 placeholder="0.00"
-                className="w-full p-6 bg-white/5 border border-white/10 rounded-3xl text-4xl font-black text-white focus:ring-4 focus:ring-indigo-500/10 transition-all outline-none text-center shadow-inner group-hover:border-white/20"
+                className={`w-full p-6 bg-white/5 border border-white/10 rounded-3xl text-4xl font-black text-white focus:ring-4 focus:ring-indigo-500/10 transition-all outline-none text-center shadow-inner group-hover:border-white/20 ${product.useMultiExpiry ? 'opacity-65 cursor-not-allowed bg-white/[0.02]' : ''}`}
               />
               <div className="absolute inset-y-0 right-6 flex items-center text-white/10 font-black text-xl pointer-events-none group-focus-within:text-indigo-500/30 transition-colors">{product.unit || 'U'}</div>
             </div>
           </div>
+
+          {product.useMultiExpiry && localBatches && localBatches.length > 0 && (
+            <div className="space-y-3 bg-white/[0.02] border border-white/5 p-4 rounded-3xl">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse" />
+                <span className="text-[9px] font-black text-indigo-400 uppercase tracking-widest">
+                  Stocks par date de péremption
+                </span>
+              </div>
+              <div className="space-y-2 max-h-[160px] overflow-y-auto pr-1">
+                {localBatches.map((batch, index) => (
+                  <div key={batch.id || index} className="flex items-center justify-between gap-3 bg-black/40 p-3 rounded-2xl border border-white/5 hover:border-white/10 transition-all">
+                    <div className="flex-1">
+                      <span className="font-mono text-xs font-bold text-indigo-300 block">{batch.batchNumber}</span>
+                      <span className="text-[9px] text-white/40 font-bold block">
+                        DLC: {new Date(batch.expirationDate).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </span>
+                    </div>
+                    <div className="w-24">
+                      <input 
+                        type="number"
+                        step="0.01"
+                        value={batch.stock}
+                        onChange={e => handleLocalBatchStockChange(index, e.target.value)}
+                        className="w-full bg-white/5 border border-white/10 rounded-xl py-1.5 px-2 text-center text-xs font-mono font-bold text-emerald-400 outline-none focus:border-indigo-500/50"
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="space-y-2">
             <label className="text-[10px] font-black text-white/30 uppercase tracking-[0.3em] pl-2">Motif de l'ajustement</label>

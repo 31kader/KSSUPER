@@ -1,12 +1,12 @@
 import { DEFAULT_PERMISSIONS } from '../constants';
 import React, { useState, useMemo, memo, useEffect, useRef, useDeferredValue } from 'react';
 import { List } from 'react-window';
+import { printReceipt, printLabels } from '../services/printService';
 import { Package, Tag, RefreshCw, History, LayoutGrid, Plus, FileSpreadsheet, Upload, ShoppingBag, AlertTriangle, Zap, Info, Search, Filter, Scan, LayoutList, Layers, Bot, Truck, ArrowUpDown, ArrowRight, Banknote, Users, Check, Printer, Copy, PackageOpen, Trash2, ChevronUp, ChevronLeft, ChevronRight, BarcodeIcon, ShoppingCart, Eye, X, MessageCircle, Phone, MapPin, Navigation, Edit, Clock, Mail, Percent, DollarSign, Star, Palette, FileText, AlignLeft, Shield, UserCog, Link2, MapIcon, Brain, Database, CreditCard, Minus, UserPlus, ChevronDown, ArrowUpRight, ArrowDownRight, Sparkles, FolderTree, Award, Calendar, AlertCircle, TrendingDown, ShieldCheck, RotateCcw } from 'lucide-react';
 import { supabase } from '../supabase';
 import { Button, Card, Modal, ConfirmDialog, BlurCard, SortableHeader, SafeImage } from './ui';
 import { Product, Category, Brand, StockAdjustment, CompanySettings, SupplierSync, Supplier, Purchase, Transaction, OnlineOrder, Employee, Customer, CartItem, ProductReturn, RolePermissions, DamagedRecord } from '../types';
 import { cn, logAction, safeDate, exportToExcel, getHierarchicalCategories, getCategoryDescendants, formatSafe, exportToCSV, generateUniqueId, isLocked } from '../lib/utils';
-import { printReceipt } from '../services/printService';
 import { format, parseISO, isWithinInterval, startOfDay, endOfDay, isToday, subDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import * as XLSX from 'xlsx';
@@ -1199,61 +1199,16 @@ export function Inventory({ products, categories, brands, stockAdjustments, user
   };
 
   const handlePrintLabel = (product: Product) => {
-    setSelectedProductForLabel(product);
+    printLabels([product], settings);
   };
 
-  const quickPrintRef = useRef<HTMLDivElement>(null);
-  const handleQuickPrint = () => {
-    const printContent = quickPrintRef.current;
-    if (!printContent) return;
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-      alert("⚠️ Veuillez autoriser les fenêtres contextuelles (pop-ups) pour imprimer.");
-      return;
-    }
-    
-    const html = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Impression d'Étiquettes</title>
-          <style>
-            ${getCommonStyles()}
-            body { margin: 0; background: #fff; }
-          </style>
-        </head>
-        <body>
-          ${printContent.innerHTML}
-          <script>
-            setTimeout(() => {
-              window.print();
-              setTimeout(() => { window.close(); }, 500);
-            }, 600);
-          </script>
-        </body>
-      </html>
-    `;
-    try {
-      printWindow.document.write(html);
-      printWindow.document.close();
-    } catch (err) {
-      console.error(err);
-      alert("⚠️ L'impression est bloquée dans cet aperçu. Veuillez ouvrir l'application dans un nouvel onglet (icône en haut à droite).");
-      printWindow.close();
-    }
-  };
+
 
   const printQuickLabel = (product: Product) => {
-    if (window !== window.top) {
-      alert("⚠️ L'impression est souvent bloquée dans l'aperçu. Si la fenêtre d'impression ne s'ouvre pas, veuillez ouvrir l'application dans un nouvel onglet (icône en haut à droite).");
-    }
+    printLabels([product], settings);
+
     
-    if (product.id !== selectedProductForLabel?.id) {
-       setSelectedProductForLabel(product);
-       setTimeout(handleQuickPrint, 100);
-    } else {
-       handleQuickPrint();
-    }
+
   };
 
   return (
@@ -2859,16 +2814,7 @@ export function Inventory({ products, categories, brands, stockAdjustments, user
         )}
       </AnimatePresence>
 
-      <div className="hidden">
-        <div ref={quickPrintRef}>
-          {selectedProductForLabel && (
-            <SingleLabel 
-              product={selectedProductForLabel} 
-              currency={settings.currency} 
-            />
-          )}
-        </div>
-      </div>
+
     </div>
   );
 }

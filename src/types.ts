@@ -31,6 +31,13 @@ export interface Brand {
   createdAt?: string;
 }
 
+export interface ProductBatch {
+  id: string;
+  batchNumber: string;
+  expirationDate: string; // ISO date string
+  stock: number;
+}
+
 export interface Product {
   id: string;
   name: string;
@@ -58,6 +65,8 @@ export interface Product {
   tags?: string[];
   expirationDate?: string;
   batchNumber?: string;
+  batches?: ProductBatch[];
+  useMultiExpiry?: boolean;
   location?: string;
   reference?: string;
   parentId?: string;
@@ -519,6 +528,10 @@ export interface CompanySettings {
   taxNumber?: string;
   receiptTemplate: 'classic' | 'modern' | 'minimal' | 'standard';
   labelTemplate: 'standard' | 'price-only' | 'barcode-only' | 'shelf-standard' | 'shelf-large' | 'shelf-promo';
+  labelOrientation?: 'landscape' | 'portrait';
+  labelRotation?: '0' | '90' | '180' | '270';
+  labelWidthCustom?: number;
+  labelHeightCustom?: number;
   currency: string;
   taxRate: number;
   allowNegativeStock?: boolean;

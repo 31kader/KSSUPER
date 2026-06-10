@@ -234,8 +234,30 @@ export function ExpiryManager({ products, categories, onUpdateProduct, onAdjustS
 
   // Logic for analyzing expiry
   const analyzedProducts = useMemo(() => {
-    return products
-      .filter(p => p.expirationDate)
+    const flatList: any[] = [];
+    products.forEach(p => {
+      if (p.useMultiExpiry && p.batches && p.batches.length > 0) {
+        p.batches.forEach(batch => {
+          flatList.push({
+            ...p,
+            id: `${p.id}-batch-${batch.id}`,
+            originalId: p.id,
+            isBatch: true,
+            batchNumber: batch.batchNumber,
+            expirationDate: batch.expirationDate || p.expirationDate,
+            stock: batch.stock
+          });
+        });
+      } else if (p.expirationDate) {
+        flatList.push({
+          ...p,
+          originalId: p.id,
+          isBatch: false
+        });
+      }
+    });
+
+    return flatList
       .map(p => {
         const expiryDate = startOfDay(parseISO(p.expirationDate!));
         const daysLeft = differenceInDays(expiryDate, now);
@@ -249,7 +271,8 @@ export function ExpiryManager({ products, categories, onUpdateProduct, onAdjustS
       })
       .filter(p => {
         const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase()) || 
-                             p.sku?.toLowerCase().includes(search.toLowerCase());
+                             p.sku?.toLowerCase().includes(search.toLowerCase()) ||
+                             (p.batchNumber || '').toLowerCase().includes(search.toLowerCase());
         const matchesCategory = selectedCategory === 'all' || p.categoryId === selectedCategory;
         const matchesStatus = filterStatus === 'all' || p.expiryStatus === filterStatus;
         return matchesSearch && matchesCategory && matchesStatus;
@@ -280,6 +303,7 @@ export function ExpiryManager({ products, categories, onUpdateProduct, onAdjustS
 
   const handleApplyPromo = async (product: any, percent: number) => {
     const oldPrice = product.price;
+    const targetId = product.originalId || product.id;
     try {
       const discount = percent / 100;
       const newPrice = Math.round(Number(product.price) * (1 - discount));
@@ -290,11 +314,11 @@ export function ExpiryManager({ products, categories, onUpdateProduct, onAdjustS
         updates.originalPrice = oldPrice;
       }
       
-      await onUpdateProduct(product.id, updates);
+      await onUpdateProduct(targetId, updates);
       toast.success(`Promo -${percent}% appliquée sur ${product.name}`, {
         action: {
           label: "Annuler",
-          onClick: () => onUpdateProduct(product.id, { price: oldPrice, originalPrice: null })
+          onClick: () => onUpdateProduct(targetId, { price: oldPrice, originalPrice: null })
         }
       });
     } catch (err) {
@@ -303,17 +327,19 @@ export function ExpiryManager({ products, categories, onUpdateProduct, onAdjustS
   };
 
   const handleRestorePrice = async (product: any) => {
+    const targetId = product.originalId || product.id;
     try {
       if (product.originalPrice) {
-        await onUpdateProduct(product.id, { price: product.originalPrice, originalPrice: null });
+        await onUpdateProduct(targetId, { price: product.originalPrice, originalPrice: null });
         toast.success("Prix original restauré");
       } else if (product.costPrice) {
         const restoredPrice = Math.round(Number(product.costPrice) * 1.3); // 30% margin default
-        await onUpdateProduct(product.id, { price: restoredPrice });
+        await onUpdateProduct(targetId, { price: restoredPrice });
         toast.success("Prix restauré (Marge 30%)");
       } else {
         toast.error("Prix d'origine inconnu. Veuillez éditer manuellement.");
-        onEditProduct(product);
+        const origProduct = product.originalId ? products.find(p => p.id === product.originalId) : product;
+        if (origProduct) onEditProduct(origProduct);
       }
     } catch (err) {
       toast.error("Erreur lors de la restauration du prix");
@@ -498,29 +524,34 @@ export function ExpiryManager({ products, categories, onUpdateProduct, onAdjustS
               >
                 <div className="flex gap-4">
                   <div className={cn(
-                    "w-16 h-16 rounded-2xl flex items-center justify-center shrink-0 border relative group",
+                    "w-16 h-16 rounded-2xl flex items-center justify-center shrink-0 border relative group overflow-hidden",
                     product.expiryStatus === 'expired' ? "bg-rose-500/10 border-rose-500/20 text-rose-500" :
                     product.expiryStatus === 'critical' ? "bg-amber-500/10 border-amber-500/20 text-amber-500" : "bg-indigo-500/10 border-indigo-500/20 text-indigo-500"
                   )}>
-                    {product.image ? (
-                      <img src={product.image} className="w-full h-full object-cover rounded-2xl" alt="" />
+                    {(product.imageUrl || (product.imageUrls && product.imageUrls[0]) || product.image) ? (
+                      <img 
+                        src={product.imageUrl || (product.imageUrls && product.imageUrls[0]) || product.image} 
+                        className="w-full h-full object-cover rounded-2xl" 
+                        alt={product.name} 
+                        referrerPolicy="no-referrer"
+                      />
                     ) : (
                       <CalendarIcon size={24} />
                     )}
                   </div>
 
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between">
-                      <div className="min-w-0">
-                        <h4 className="font-black text-white uppercase tracking-tight truncate pr-2">{product.name}</h4>
-                        <div className="flex flex-wrap items-center gap-2 mt-0.5">
-                          <p className="text-[10px] text-white/30 font-black tracking-widest uppercase truncate">{product.sku}</p>
-                          <span className="w-1 h-1 bg-white/10 rounded-full" />
-                          <p className="text-[10px] text-white/30 font-black tracking-widest uppercase">Stock: {product.stock} {product.unit}</p>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <h4 className="font-extrabold text-white uppercase tracking-tight text-sm md:text-base break-words line-clamp-3 pr-2 leading-relaxed">{product.name}</h4>
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1.5">
+                          <p className="text-[10px] text-white/40 font-mono font-bold tracking-wider uppercase">{product.sku || 'SANS SKU'}</p>
+                          <span className="w-1 h-1 bg-white/15 rounded-full" />
+                          <p className="text-[10px] text-white/50 font-black tracking-wider uppercase bg-white/5 px-1.5 py-0.5 rounded-md">Stock: {product.stock} {product.unit || 'unité'}</p>
                           {product.batchNumber && (
                             <>
-                              <span className="w-1 h-1 bg-white/10 rounded-full" />
-                              <span className="text-[10px] text-indigo-400 font-extrabold tracking-widest uppercase truncate border border-indigo-500/20 px-1 py-0.2 rounded bg-indigo-500/5">Lot: {product.batchNumber}</span>
+                              <span className="w-1 h-1 bg-white/15 rounded-full" />
+                              <span className="text-[10px] text-indigo-300 font-extrabold tracking-wider uppercase border border-indigo-500/30 px-2 py-0.5 rounded-md bg-indigo-500/10">Lot: {product.batchNumber}</span>
                             </>
                           )}
                         </div>
@@ -569,13 +600,19 @@ export function ExpiryManager({ products, categories, onUpdateProduct, onAdjustS
                         <RefreshCcw size={12} /> Prix Normal
                       </button>
                       <button 
-                        onClick={() => onEditProduct(product)}
+                        onClick={() => {
+                          const orig = product.originalId ? products.find((p: any) => p.id === product.originalId) : product;
+                          if (orig) onEditProduct(orig);
+                        }}
                         className="bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl py-2 text-[9px] font-black uppercase tracking-widest text-white/40 transition-all flex items-center justify-center gap-2"
                       >
                         <Edit2 size={12} /> Modifier
                       </button>
                       <button 
-                        onClick={() => onAdjustStock(product)}
+                        onClick={() => {
+                          const orig = product.originalId ? products.find((p: any) => p.id === product.originalId) : product;
+                          if (orig) onAdjustStock(orig);
+                        }}
                         className="bg-rose-500/5 hover:bg-rose-500/20 text-rose-400 border border-rose-500/10 rounded-xl py-2 text-[9px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2"
                       >
                         <Trash2 size={12} /> Jeter / Perte

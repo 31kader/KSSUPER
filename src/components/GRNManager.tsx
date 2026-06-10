@@ -15,6 +15,8 @@ interface GRNItem {
   newCostPrice: number;
   vatRate: number;
   discount: number;
+  expirationDate?: string;
+  batchNumber?: string;
 }
 
 interface GoodsReceiptNote {
@@ -217,7 +219,9 @@ export function GRNManager({
       oldCostPrice: product.costPrice || 0, 
       newCostPrice: product.costPrice || 0, 
       vatRate: product.taxRate || 0, 
-      discount: 0 
+      discount: 0,
+      expirationDate: product.expirationDate || '',
+      batchNumber: product.batchNumber || ''
     }]);
     setSearch('');
   };
@@ -247,6 +251,35 @@ export function GRNManager({
               p.stock = (p.stock || 0) + item.quantity;
               p.costPrice = item.newCostPrice;
               p.updatedAt = new Date().toISOString();
+
+              if (item.expirationDate) {
+                if (!p.useMultiExpiry) {
+                  const existingBatches = [];
+                  if (p.stock - item.quantity > 0) {
+                    existingBatches.push({
+                      id: Math.random().toString(36).substring(2, 9),
+                      batchNumber: p.batchNumber || 'LOT-INI',
+                      expirationDate: p.expirationDate || new Date(Date.now() + 365*24*60*60*1000).toISOString().split('T')[0],
+                      stock: p.stock - item.quantity
+                    });
+                  }
+                  p.batches = existingBatches;
+                  p.useMultiExpiry = true;
+                }
+                
+                const newBatch = {
+                  id: Math.random().toString(36).substring(2, 9),
+                  batchNumber: item.batchNumber || 'LOT-' + new Date().toISOString().split('T')[0].replace(/-/g, ''),
+                  expirationDate: item.expirationDate,
+                  stock: item.quantity
+                };
+                p.batches = p.batches ? [...p.batches, newBatch] : [newBatch];
+                
+                const sorted = [...p.batches].sort((a, b) => new Date(a.expirationDate).getTime() - new Date(b.expirationDate).getTime());
+                p.expirationDate = sorted[0].expirationDate;
+                p.batchNumber = sorted[0].batchNumber;
+              }
+
               return p;
             }
             return product;
@@ -301,6 +334,35 @@ export function GRNManager({
             p.stock = (p.stock || 0) + item.quantity;
             p.costPrice = item.newCostPrice;
             p.updatedAt = new Date().toISOString();
+
+            if (item.expirationDate) {
+              if (!p.useMultiExpiry) {
+                const existingBatches = [];
+                if (p.stock - item.quantity > 0) {
+                  existingBatches.push({
+                    id: Math.random().toString(36).substring(2, 9),
+                    batchNumber: p.batchNumber || 'LOT-INI',
+                    expirationDate: p.expirationDate || new Date(Date.now() + 365*24*60*60*1000).toISOString().split('T')[0],
+                    stock: p.stock - item.quantity
+                  });
+                }
+                p.batches = existingBatches;
+                p.useMultiExpiry = true;
+              }
+              
+              const newBatch = {
+                id: Math.random().toString(36).substring(2, 9),
+                batchNumber: item.batchNumber || 'LOT-' + new Date().toISOString().split('T')[0].replace(/-/g, ''),
+                expirationDate: item.expirationDate,
+                stock: item.quantity
+              };
+              p.batches = p.batches ? [...p.batches, newBatch] : [newBatch];
+              
+              const sorted = [...p.batches].sort((a, b) => new Date(a.expirationDate).getTime() - new Date(b.expirationDate).getTime());
+              p.expirationDate = sorted[0].expirationDate;
+              p.batchNumber = sorted[0].batchNumber;
+            }
+
             return p;
           }
           return product;
@@ -513,6 +575,38 @@ export function GRNManager({
                     <button onClick={() => setItems(items.filter((_, i) => i !== index))} className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all">
                       <Trash2 size={14} />
                     </button>
+                  </div>
+
+                  {/* Lot/Expiry tracking per reception item */}
+                  <div className="col-span-12 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800/60 flex flex-wrap items-center gap-4 text-xs">
+                    <span className="text-[10px] uppercase font-black text-slate-400 tracking-wider">Suivi Expiration (DLC / Lot) :</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-slate-500 font-bold">Date de Péremption (DLC)</span>
+                      <input 
+                        type="date"
+                        value={item.expirationDate || ''}
+                        onChange={(e) => {
+                          const newItems = [...items];
+                          newItems[index] = { ...newItems[index], expirationDate: e.target.value };
+                          setItems(newItems);
+                        }}
+                        className="px-2 py-1 bg-slate-50 dark:bg-slate-800 rounded border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-300 outline-none focus:ring-1 focus:ring-indigo-500"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-slate-500 font-bold">Numéro de Lot</span>
+                      <input 
+                        type="text"
+                        placeholder="Ex: LOT-2026A"
+                        value={item.batchNumber || ''}
+                        onChange={(e) => {
+                          const newItems = [...items];
+                          newItems[index] = { ...newItems[index], batchNumber: e.target.value };
+                          setItems(newItems);
+                        }}
+                        className="px-2 py-1 bg-slate-50 dark:bg-slate-800 rounded border border-slate-200 dark:border-slate-700 text-xs text-slate-700 dark:text-slate-300 font-mono font-bold outline-none focus:ring-1 focus:ring-indigo-500"
+                      />
+                    </div>
                   </div>
                 </div>
               );

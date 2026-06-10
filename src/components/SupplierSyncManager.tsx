@@ -7,6 +7,7 @@ import {
   Supplier, Product, SupplierSync 
 } from '../types';
 import { Button, Card, Modal, ConfirmDialog } from './ui';
+import { getApiUrl } from '../lib/api';
 
 export const SupplierSyncManager = memo(function SupplierSyncManager({ 
   supplierSyncs, suppliers, products 
@@ -116,7 +117,7 @@ export const SupplierSyncManager = memo(function SupplierSyncManager({
   const triggerSync = async (sync: SupplierSync) => {
     setActiveSyncing(sync.id);
     try {
-      const response = await fetch('/api/suppliers/sync', {
+      const response = await fetch(getApiUrl('/api/suppliers/sync'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ syncId: sync.id })

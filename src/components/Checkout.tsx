@@ -585,6 +585,24 @@ export const Checkout = memo(function Checkout({
             const product = products.find((p: Product) => p.id === item.id);
             if (product) {
               let newStock = product.stock - item.quantity;
+              let updatedBatches = product.batches ? product.batches.map(b => ({ ...b })) : [];
+
+              if (product.useMultiExpiry && updatedBatches.length > 0) {
+                let remainingToDeduct = item.quantity;
+                updatedBatches.sort((a, b) => new Date(a.expirationDate).getTime() - new Date(b.expirationDate).getTime());
+                
+                for (let b of updatedBatches) {
+                  if (remainingToDeduct <= 0) break;
+                  if (b.stock > 0) {
+                    const deduct = Math.min(b.stock, remainingToDeduct);
+                    b.stock -= deduct;
+                    remainingToDeduct -= deduct;
+                  }
+                }
+                if (remainingToDeduct > 0 && updatedBatches.length > 0) {
+                  updatedBatches[updatedBatches.length - 1].stock -= remainingToDeduct;
+                }
+              }
               
               // Handle unpack
               if (newStock < 0 && product.autoUnpack && product.parentId && product.unitsPerParent) {
@@ -592,16 +610,31 @@ export const Checkout = memo(function Checkout({
                 const parentsNeeded = Math.ceil(shortfall / product.unitsPerParent);
                 const parentProduct = products.find((p: Product) => p.id === product.parentId);
                 if (parentProduct && parentProduct.id) {
+                   const updatedParent = {
+                     ...parentProduct,
+                     stock: parentProduct.stock - parentsNeeded,
+                     updatedAt: new Date().toISOString()
+                   };
+                   window.dispatchEvent(new CustomEvent('product-cache-update', { detail: updatedParent }));
+
                    await supabase.from('products').update({
-                       stock: parentProduct.stock - parentsNeeded,
-                       updatedAt: new Date().toISOString()
+                       stock: updatedParent.stock,
+                       updated_at: updatedParent.updatedAt
                    }).eq('id', parentProduct.id);
                    newStock = (parentsNeeded * product.unitsPerParent) + newStock;
                 }
               }
+              const updatedCurrentProduct = {
+                ...product,
+                stock: newStock,
+                batches: product.useMultiExpiry ? updatedBatches : (product.batches || null),
+                updatedAt: new Date().toISOString()
+              };
+              window.dispatchEvent(new CustomEvent('product-cache-update', { detail: updatedCurrentProduct }));
+
               await supabase.from('products').update({
                   stock: newStock,
-                  updatedAt: new Date().toISOString()
+                  updated_at: updatedCurrentProduct.updatedAt
               }).eq('id', product.id);
             }
           }

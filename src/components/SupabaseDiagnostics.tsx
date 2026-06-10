@@ -28,7 +28,20 @@ export const SupabaseDiagnostics: React.FC = () => {
     { name: 'Transactions', mappedName: 'transactions', pushed: false, count: null, error: null, loading: false },
     { name: 'Employés', mappedName: 'employees', pushed: false, count: null, error: null, loading: false },
     { name: 'Sessions de Caisse', mappedName: 'cash_shifts', pushed: false, count: null, error: null, loading: false },
-    { name: 'Dépenses', mappedName: 'expenses', pushed: false, count: null, error: null, loading: false }
+    { name: 'Dépenses', mappedName: 'expenses', pushed: false, count: null, error: null, loading: false },
+    { name: 'Brouillons de la Caisse', mappedName: 'cart_drafts', pushed: false, count: null, error: null, loading: false },
+    { name: 'Promotions', mappedName: 'promotions', pushed: false, count: null, error: null, loading: false },
+    { name: 'Retours de Produits', mappedName: 'returns', pushed: false, count: null, error: null, loading: false },
+    { name: 'Commandes en Ligne', mappedName: 'online_orders', pushed: false, count: null, error: null, loading: false },
+    { name: 'Achats Fournisseurs', mappedName: 'purchases', pushed: false, count: null, error: null, loading: false },
+    { name: 'Bons de Commande', mappedName: 'purchase_orders', pushed: false, count: null, error: null, loading: false },
+    { name: 'Ajustements de Stock', mappedName: 'stock_adjustments', pushed: false, count: null, error: null, loading: false },
+    { name: 'Paiements Fournisseurs', mappedName: 'supplier_payments', pushed: false, count: null, error: null, loading: false },
+    { name: 'Audits de Stock', mappedName: 'audits', pushed: false, count: null, error: null, loading: false },
+    { name: 'Logs d\'Audit', mappedName: 'audit_logs', pushed: false, count: null, error: null, loading: false },
+    { name: 'Synchronisons Fournisseurs', mappedName: 'supplier_syncs', pushed: false, count: null, error: null, loading: false },
+    { name: 'Articles Endommagés', mappedName: 'damaged_items', pushed: false, count: null, error: null, loading: false },
+    { name: 'Avances sur Salaire', mappedName: 'advances', pushed: false, count: null, error: null, loading: false }
   ]);
 
   const [activeSection, setActiveSection] = useState<string | null>(null);
@@ -655,6 +668,218 @@ ALTER TABLE transactions ADD COLUMN IF NOT EXISTS balance_used NUMERIC(12, 2) DE
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS voucher_discount NUMERIC(12, 2) DEFAULT 0.00;
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS is_wholesale BOOLEAN DEFAULT FALSE;
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS online_order_id TEXT;
+
+-- 4.5. Consolidation de la table AUDIT_LOGS (Logs d'audit camelCase & snake_case)
+ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS "userId" TEXT;
+ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS user_name TEXT;
+ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS "userName" TEXT;
+ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS module TEXT;
+ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS severity TEXT;
+ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS is_cancelled BOOLEAN DEFAULT FALSE;
+ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS "isCancelled" BOOLEAN DEFAULT FALSE;
+ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ;
+ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS "cancelledAt" TIMESTAMPTZ;
+ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ;
+ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS "updatedAt" TIMESTAMPTZ;
+
+-- 5. Nouvelles colonnes de gestion de lots, d'expiration et de dépaquetage (Produits)
+ALTER TABLE products ADD COLUMN IF NOT EXISTS use_multi_expiry BOOLEAN DEFAULT FALSE;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS batches JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS auto_unpack BOOLEAN DEFAULT FALSE;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS units_per_parent NUMERIC(12, 2) DEFAULT 1.00;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS parent_id TEXT;
+
+-- 6. Création de la table CART_DRAFTS (Brouillons de Panier de Caisse)
+CREATE TABLE IF NOT EXISTS cart_drafts (
+    "userId" TEXT PRIMARY KEY,
+    sessions JSONB,
+    "activeSessionId" TEXT,
+    "updatedAt" TIMESTAMPTZ DEFAULT NOW(),
+    user_id TEXT, -- compatibilité snake_case
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Activation de la sécurité RLS pour cart_drafts
+ALTER TABLE cart_drafts ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "public_access_cart_drafts" ON cart_drafts;
+CREATE POLICY "public_access_cart_drafts" ON cart_drafts FOR ALL USING (true) WITH CHECK (true);
+
+-- 7. Création des autres tables si absentes (Promotions, Retours, etc.)
+CREATE TABLE IF NOT EXISTS promotions (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT,
+    type TEXT,
+    value NUMERIC(12,2),
+    start_date DATE,
+    end_date DATE,
+    conditions JSONB,
+    active BOOLEAN DEFAULT TRUE
+);
+ALTER TABLE promotions ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "public_promotions" ON promotions;
+CREATE POLICY "public_promotions" ON promotions FOR ALL USING (true) WITH CHECK (true);
+
+CREATE TABLE IF NOT EXISTS returns (
+    id TEXT PRIMARY KEY,
+    transaction_id TEXT,
+    product_id TEXT,
+    quantity NUMERIC(12,3) NOT NULL DEFAULT 0.00,
+    reason TEXT,
+    condition TEXT,
+    refund_amount NUMERIC(12,2),
+    date DATE DEFAULT CURRENT_DATE,
+    status TEXT DEFAULT 'pending',
+    notes TEXT
+);
+ALTER TABLE returns ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "public_returns" ON returns;
+CREATE POLICY "public_returns" ON returns FOR ALL USING (true) WITH CHECK (true);
+
+CREATE TABLE IF NOT EXISTS online_orders (
+    id TEXT PRIMARY KEY,
+    customer_id TEXT,
+    customer_name TEXT,
+    items JSONB,
+    total NUMERIC(12,2),
+    status TEXT DEFAULT 'pending',
+    shipping_address TEXT,
+    payment_status TEXT DEFAULT 'unpaid',
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE online_orders ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "public_orders" ON online_orders;
+CREATE POLICY "public_orders" ON online_orders FOR ALL USING (true) WITH CHECK (true);
+
+CREATE TABLE IF NOT EXISTS purchases (
+    id TEXT PRIMARY KEY,
+    supplier_id TEXT,
+    items JSONB,
+    total_amount NUMERIC(12,2),
+    status TEXT,
+    date DATE DEFAULT CURRENT_DATE,
+    documents TEXT[]
+);
+ALTER TABLE purchases ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "public_purchases" ON purchases;
+CREATE POLICY "public_purchases" ON purchases FOR ALL USING (true) WITH CHECK (true);
+
+CREATE TABLE IF NOT EXISTS purchase_orders (
+    id TEXT PRIMARY KEY,
+    supplier_id TEXT,
+    items JSONB,
+    total_amount NUMERIC(12,2),
+    status TEXT,
+    expected_date DATE,
+    notes TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE purchase_orders ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "public_purchase_orders" ON purchase_orders;
+CREATE POLICY "public_purchase_orders" ON purchase_orders FOR ALL USING (true) WITH CHECK (true);
+
+CREATE TABLE IF NOT EXISTS stock_adjustments (
+    id TEXT PRIMARY KEY,
+    product_id TEXT,
+    quantity_change NUMERIC(12,3),
+    reason TEXT,
+    user_id TEXT,
+    date DATE DEFAULT CURRENT_DATE,
+    cost_impact NUMERIC(12,2)
+);
+ALTER TABLE stock_adjustments ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "public_stock_adjustments" ON stock_adjustments;
+CREATE POLICY "public_stock_adjustments" ON stock_adjustments FOR ALL USING (true) WITH CHECK (true);
+
+CREATE TABLE IF NOT EXISTS supplier_payments (
+    id TEXT PRIMARY KEY,
+    supplier_id TEXT,
+    amount NUMERIC(12,2),
+    method TEXT,
+    date DATE DEFAULT CURRENT_DATE,
+    reference TEXT,
+    notes TEXT
+);
+ALTER TABLE supplier_payments ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "public_supplier_payments" ON supplier_payments;
+CREATE POLICY "public_supplier_payments" ON supplier_payments FOR ALL USING (true) WITH CHECK (true);
+
+CREATE TABLE IF NOT EXISTS audits (
+    id TEXT PRIMARY KEY,
+    date DATE DEFAULT CURRENT_DATE,
+    auditor_id TEXT,
+    status TEXT,
+    discrepancies JSONB,
+    notes TEXT,
+    completed_at TIMESTAMPTZ
+);
+ALTER TABLE audits ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "public_audits" ON audits;
+CREATE POLICY "public_audits" ON audits FOR ALL USING (true) WITH CHECK (true);
+
+CREATE TABLE IF NOT EXISTS audit_logs (
+    id TEXT PRIMARY KEY,
+    user_id TEXT,
+    "userId" TEXT,
+    user_name TEXT,
+    "userName" TEXT,
+    action TEXT,
+    entity TEXT,
+    module TEXT,
+    details TEXT,
+    severity TEXT,
+    is_cancelled BOOLEAN DEFAULT FALSE,
+    "isCancelled" BOOLEAN DEFAULT FALSE,
+    cancelled_at TIMESTAMPTZ,
+    "cancelledAt" TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ,
+    "updatedAt" TIMESTAMPTZ,
+    timestamp TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "public_audit_logs" ON audit_logs;
+CREATE POLICY "public_audit_logs" ON audit_logs FOR ALL USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Allow authenticated inserts" ON audit_logs;
+CREATE POLICY "Allow authenticated inserts" ON audit_logs FOR INSERT TO authenticated WITH CHECK (true);
+
+CREATE TABLE IF NOT EXISTS supplier_syncs (
+    id TEXT PRIMARY KEY,
+    supplier_id TEXT,
+    last_sync TIMESTAMPTZ,
+    status TEXT,
+    items_updated INT,
+    errors TEXT
+);
+ALTER TABLE supplier_syncs ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "public_supplier_syncs" ON supplier_syncs;
+CREATE POLICY "public_supplier_syncs" ON supplier_syncs FOR ALL USING (true) WITH CHECK (true);
+
+CREATE TABLE IF NOT EXISTS damaged_items (
+    id TEXT PRIMARY KEY,
+    product_id TEXT,
+    quantity NUMERIC(12,3),
+    date DATE DEFAULT CURRENT_DATE,
+    reported_by TEXT,
+    reason TEXT,
+    status TEXT
+);
+ALTER TABLE damaged_items ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "public_damaged_items" ON damaged_items;
+CREATE POLICY "public_damaged_items" ON damaged_items FOR ALL USING (true) WITH CHECK (true);
+
+CREATE TABLE IF NOT EXISTS advances (
+    id TEXT PRIMARY KEY,
+    employee_id TEXT,
+    amount NUMERIC(12,2),
+    date DATE DEFAULT CURRENT_DATE,
+    reason TEXT,
+    status TEXT,
+    approved_by TEXT,
+    repayment_date DATE
+);
+ALTER TABLE advances ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "public_advances" ON advances;
+CREATE POLICY "public_advances" ON advances FOR ALL USING (true) WITH CHECK (true);
 `;
 
   const sqlDropTables = `-- SCRIPT DE NETTOYAGE RADICAL (⚠️ PRUDENCE : EFFACE TOUTES LES DONNÉES)

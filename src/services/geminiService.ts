@@ -1,7 +1,9 @@
 
+import { getApiUrl } from '@/src/lib/api';
+
 export const callGeminiAI = async (data: any, userPrompt: string, systemPromptOverride?: string) => {
   try {
-    const response = await fetch('/api/ai/complete', {
+    const response = await fetch(getApiUrl('/api/ai/complete'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -32,7 +34,7 @@ export const callGeminiAI = async (data: any, userPrompt: string, systemPromptOv
 
 export const scanInvoice = async (imageBase64: string, mimeType: string = 'image/jpeg') => {
   try {
-    const response = await fetch('/api/ai/scan', {
+    const response = await fetch(getApiUrl('/api/ai/scan'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
