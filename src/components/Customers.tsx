@@ -15,7 +15,6 @@ import {
 import { Button, Modal, ConfirmDialog } from './ui';
 import { cn, formatSafe } from '../lib/utils';
 import { CustomerProfile } from './CustomerProfile';
-import { MicroInvestorsManager } from './MicroInvestorsManager';
 import { useTranslation } from '../translations';
 
 export const Customers = memo(function Customers({ 
@@ -241,47 +240,8 @@ export const Customers = memo(function Customers({
     window.open(`https://wa.me/${cleanPhone}`, '_blank');
   };
 
-  const [mainSection, setMainSection] = useState<'customers' | 'investors'>('customers');
-
   return (
     <div className="h-full flex flex-col gap-6">
-      <div className="flex gap-4 p-1 bg-white/5 backdrop-blur-xl rounded-[2rem] border border-white/5 w-fit">
-        <button
-          onClick={() => setMainSection('customers')}
-          className={cn(
-            "px-6 py-3 rounded-3xl text-xs font-black uppercase tracking-widest transition-all",
-            mainSection === 'customers' 
-              ? "bg-indigo-500 text-white shadow-neon-indigo" 
-              : "text-slate-400 hover:text-white hover:bg-white/5"
-          )}
-        >
-          Clients
-        </button>
-        <button
-          onClick={() => setMainSection('investors')}
-          className={cn(
-            "px-6 py-3 rounded-3xl text-xs font-black uppercase tracking-widest transition-all",
-            mainSection === 'investors' 
-              ? "bg-amber-500 text-slate-900 shadow-neon-amber" 
-              : "text-slate-400 hover:text-white hover:bg-white/5"
-          )}
-        >
-          Micro-Investisseurs
-        </button>
-      </div>
-
-      {mainSection === 'investors' ? (
-        <div className="flex-1 overflow-hidden bg-white/5 backdrop-blur-xl rounded-[2rem] border border-white/5 p-6">
-           <MicroInvestorsManager 
-             settings={settings} 
-             transactions={transactions} 
-             products={products || []} 
-             expenses={expenses || []} 
-             stockAdjustments={stockAdjustments || []} 
-             categories={categories || []}
-           />
-        </div>
-      ) : (
       <div className="flex-1 flex flex-col md:flex-row gap-6 overflow-hidden">
         {/* Left Panel: Customer List */}
         <div className="w-full md:w-1/3 flex flex-col gap-4 bg-white/5 backdrop-blur-xl p-6 rounded-[2rem] shadow-neon-indigo/5 border border-white/5 h-1/2 md:h-full overflow-hidden">
@@ -1106,7 +1066,6 @@ export const Customers = memo(function Customers({
         </form>
       </Modal>
       </div>
-      )}
     </div>
   );
 });

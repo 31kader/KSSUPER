@@ -201,9 +201,42 @@ export function useDataFetching(
       }
     };
 
+    const handleCategoryCacheUpdate = (e: Event) => {
+      const customEvent = e as CustomEvent<Category>;
+      if (customEvent.detail && customEvent.detail.id) {
+        const updatedCat = customEvent.detail;
+        setCategories(prev => {
+          const index = prev.findIndex(c => c.id === updatedCat.id);
+          let newCats;
+          if (index > -1) {
+            newCats = [...prev];
+            newCats[index] = { ...newCats[index], ...updatedCat };
+          } else {
+            newCats = [...prev, updatedCat];
+          }
+          idbSet('nexus_categories', newCats).catch(err => console.warn('[IDB Error]', err));
+          return newCats;
+        });
+      }
+    };
+
+    const handleCategoryCacheDelete = (e: Event) => {
+      const customEvent = e as CustomEvent<{ id: string }>;
+      if (customEvent.detail && customEvent.detail.id) {
+        const idToDelete = customEvent.detail.id;
+        setCategories(prev => {
+          const newCats = prev.filter(c => c.id !== idToDelete);
+          idbSet('nexus_categories', newCats).catch(err => console.warn('[IDB Error]', err));
+          return newCats;
+        });
+      }
+    };
+
     window.addEventListener('product-cache-update', handleProductCacheUpdate);
     window.addEventListener('product-cache-delete', handleProductCacheDelete);
     window.addEventListener('products-batch-delete', handleProductsBatchDelete);
+    window.addEventListener('category-cache-update', handleCategoryCacheUpdate);
+    window.addEventListener('category-cache-delete', handleCategoryCacheDelete);
 
     try {
       const offlineTxs = JSON.parse(localStorage.getItem('nexus_offline_transactions') || '[]');
@@ -336,6 +369,8 @@ export function useDataFetching(
       window.removeEventListener('product-cache-update', handleProductCacheUpdate);
       window.removeEventListener('product-cache-delete', handleProductCacheDelete);
       window.removeEventListener('products-batch-delete', handleProductsBatchDelete);
+      window.removeEventListener('category-cache-update', handleCategoryCacheUpdate);
+      window.removeEventListener('category-cache-delete', handleCategoryCacheDelete);
       window.removeEventListener('offline-transaction-created', handleOfflineTxCreated);
     };
   }, [loading, appMode, user?.uid]);

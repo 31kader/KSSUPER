@@ -1917,6 +1917,7 @@ export default function App() {
                   {activeTab === 'checkout' && (
                     <Checkout 
                       products={products} 
+                      categories={categories}
                       cart={cart} 
                       setCart={setCart} 
                       user={user} 

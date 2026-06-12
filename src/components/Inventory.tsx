@@ -28,7 +28,7 @@ import { ManualQRCodeGenerator } from './ManualQRCodeGenerator';
 
 import { LossReport } from './LossReport';
 
-export function ProductMobileCard({ product, settings, brands, categories, onEdit, onAdjust, onDelete, onHistory, onPrint, isPosSelectionMode, isDeleting }: any) {
+export function ProductMobileCard({ product, settings, brands, categories, onEdit, onAdjust, onDelete, onHistory, onPrint, isPosSelectionMode, isDeleting, selectedProductIds, onToggleSelect, onCopy }: any) {
   const margin = product.price - (product.costPrice || 0);
   const isLowStock = product.stock <= (product.minStock || 5);
   
@@ -40,7 +40,19 @@ export function ProductMobileCard({ product, settings, brands, categories, onEdi
         isLowStock && "border-rose-500/30 bg-rose-500/5 shadow-neon-cyan/20"
       )}
     >
-      <div className="flex items-start gap-5">
+      <div className="flex items-start gap-4">
+        {selectedProductIds && onToggleSelect && (
+          <div className="flex items-center self-center mr-1" onClick={(e) => { e.stopPropagation(); onToggleSelect(); }}>
+            <div className={cn(
+              "w-8 h-8 rounded-xl border-2 flex items-center justify-center transition-all flex-shrink-0 cursor-pointer",
+              selectedProductIds.includes(product.id) 
+                ? "bg-indigo-600 border-indigo-500 shadow-neon-indigo" 
+                : "border-white/10 bg-black/20 hover:border-white/30"
+            )}>
+              {selectedProductIds.includes(product.id) && <Check size={14} className="text-white" strokeWidth={4} />}
+            </div>
+          </div>
+        )}
         <div className="w-20 h-20 rounded-[1.5rem] bg-black/60 flex items-center justify-center overflow-hidden border border-white/10 flex-shrink-0 shadow-2xl group-hover:border-indigo-500 transition-all duration-500">
           <SafeImage 
             src={product.imageUrl} 
@@ -90,8 +102,8 @@ export function ProductMobileCard({ product, settings, brands, categories, onEdi
           <p className="text-[10px] font-black font-mono text-white/30 mt-2 uppercase tracking-[0.2em]">{product.sku || '-'}</p>
           <div className="flex items-center gap-2 mt-4 flex-wrap">
              <span className={cn(
-               "px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-[0.1em] border",
-               isLowStock ? "bg-rose-500/10 text-rose-400 border-rose-500/20" : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                "px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-[0.1em] border",
+                isLowStock ? "bg-rose-500/10 text-rose-400 border-rose-500/20" : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
              )}>
                STOCK: {product.stock} {product.unit}
              </span>
@@ -146,6 +158,7 @@ export function ProductMobileCard({ product, settings, brands, categories, onEdi
            {[
              { icon: History, onClick: onHistory },
              { icon: Printer, onClick: onPrint },
+             { icon: Copy, onClick: onCopy },
              { icon: Trash2, onClick: onDelete, danger: true, loading: isDeleting }
            ].map((btn, i) => (
              <button 
@@ -160,7 +173,7 @@ export function ProductMobileCard({ product, settings, brands, categories, onEdi
                 )}
              >
                 {btn.loading ? <RefreshCw size={18} className="animate-spin" /> : <btn.icon size={18} />}
-             </button>
+              </button>
            ))}
         </div>
       </div>
@@ -1887,33 +1900,59 @@ export function Inventory({ products, categories, brands, stockAdjustments, user
                <div className="flex-1 min-h-[600px] h-[calc(100vh-320px)] bg-black/10 rounded-[3rem] border border-white/5 relative overflow-hidden backdrop-blur-sm group/catalog">
                 {sortedProducts.length > 0 ? (
                   <div className="virtual-catalog-container flex flex-col h-full min-h-0 pt-4 pb-4">
-                    {/* Unified Virtualized Catalog Ready */}
-                    <div className="flex items-center gap-6 px-10 mb-4 text-[10px] font-black uppercase tracking-widest text-white/40">
-                       <div className="w-10"></div>
-                       <div className="w-14">Image</div>
-                       <div className="flex-1 cursor-pointer hover:text-white transition-colors" onClick={() => requestSort('name')}>Nom du Produit</div>
-                       <div className="w-48 hidden xl:block">Catégorie / Fns</div>
+                    {isMobile ? (
+                      <div className="flex-1 overflow-y-auto px-4 py-2 space-y-4 custom-scrollbar pb-24">
+                        {paginatedProducts.map((product) => (
+                          <ProductMobileCard
+                            key={product.id}
+                            product={product}
+                            settings={settings}
+                            brands={brands}
+                            categories={categories}
+                            isPosSelectionMode={isPosSelectionMode}
+                            selectedProductIds={selectedProductIds}
+                            onToggleSelect={() => toggleSelectProduct(product.id)}
+                            onEdit={() => { setEditingProduct(product); setIsProductModalOpen(true); }}
+                            onAdjust={() => { setSelectedProductForAdjustment(product); setIsAdjustmentModalOpen(true); }}
+                            onDelete={() => handleDelete(product.id)}
+                            onHistory={() => { setViewingHistoryProduct(product); setIsProductHistoryModalOpen(true); setHistoryTab('sales'); }}
+                            onPrint={() => printQuickLabel(product)}
+                            onCopy={() => { setEditingProduct({...product, id: undefined, name: product.name + " (Copie)"}); setIsProductModalOpen(true); }}
+                            isDeleting={isDeletingId === product.id}
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <>
+                        {/* Unified Virtualized Catalog Ready */}
+                        <div className="flex items-center gap-6 px-10 mb-4 text-[10px] font-black uppercase tracking-widest text-white/40">
+                           <div className="w-10"></div>
+                           <div className="w-14">Image</div>
+                           <div className="flex-1 cursor-pointer hover:text-white transition-colors" onClick={() => requestSort('name')}>Nom du Produit</div>
+                           <div className="w-48 hidden xl:block">Catégorie / Fns</div>
 
-                       <div className="w-24 flex flex-col items-end gap-1">
-                         <div className="cursor-pointer hover:text-white transition-colors" onClick={() => requestSort('margin')}>Prix / Marge</div>
-                         <button 
-                           onClick={() => setShowMarginExtremes(!showMarginExtremes)}
-                           className={cn("text-[9px] px-2 py-0.5 rounded border transition-all", showMarginExtremes ? "bg-indigo-500/50 text-white border-indigo-400" : "bg-white/5 text-white/30 border-white/10")}
-                         >
-                           Extrêmes
-                         </button>
-                       </div>
-                       <div className="w-32 text-right cursor-pointer hover:text-white transition-colors" onClick={() => requestSort('stock')}>Stock</div>
-                    </div>
-                    {/* @ts-ignore */}
-                    <List
-                      style={{ height: '100%', width: '100%' }}
-                      rowCount={paginatedProducts.length}
-                      rowHeight={104}
-                      rowComponent={ProductRow as any}
-                      rowProps={{ sortedProducts: paginatedProducts } as any}
-                      className="custom-scrollbar py-0"
-                    />
+                           <div className="w-24 flex flex-col items-end gap-1">
+                             <div className="cursor-pointer hover:text-white transition-colors" onClick={() => requestSort('margin')}>Prix / Marge</div>
+                             <button 
+                               onClick={() => setShowMarginExtremes(!showMarginExtremes)}
+                               className={cn("text-[9px] px-2 py-0.5 rounded border transition-all", showMarginExtremes ? "bg-indigo-500/50 text-white border-indigo-400" : "bg-white/5 text-white/30 border-white/10")}
+                             >
+                               Extrêmes
+                             </button>
+                           </div>
+                           <div className="w-32 text-right cursor-pointer hover:text-white transition-colors" onClick={() => requestSort('stock')}>Stock</div>
+                        </div>
+                        {/* @ts-ignore */}
+                        <List
+                          style={{ height: '100%', width: '100%' }}
+                          rowCount={paginatedProducts.length}
+                          rowHeight={104}
+                          rowComponent={ProductRow as any}
+                          rowProps={{ sortedProducts: paginatedProducts } as any}
+                          className="custom-scrollbar py-0"
+                        />
+                      </>
+                    )}
                     
                     <div className="flex justify-center items-center gap-6 p-4 border-t border-white/5">
                       <button 
@@ -1987,8 +2026,8 @@ export function Inventory({ products, categories, brands, stockAdjustments, user
                       </div>
                     </div>
                     
-                    <Card className="overflow-hidden">
-                      <table className="w-full text-left border-collapse">
+                    <Card className="overflow-hidden overflow-x-auto">
+                      <table className="w-full text-left border-collapse min-w-[600px]">
                         <thead>
                           <tr className="bg-white/5 border-bottom border-white/5">
                             <th className="p-4 text-xs font-bold text-white/40 uppercase tracking-wider">Produit</th>

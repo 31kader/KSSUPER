@@ -8,7 +8,7 @@ import React, { useState, useMemo, memo, useEffect, useRef, useDeferredValue, us
 import { Package, Tag, RefreshCw, LayoutGrid, Plus, FileSpreadsheet, Upload, ShoppingBag, AlertTriangle, Zap, Info, Search, Filter, Scan, LayoutList, Layers, Truck, ArrowUpDown, Award, Calendar, FolderTree, AlertCircle, TrendingDown, ShieldCheck, RotateCcw, Check, Printer, Copy, PackageOpen, Trash2, ChevronUp, BarcodeIcon, ShoppingCart, Eye, X, MessageCircle, Phone, MapPin, Navigation, Edit, Clock, Mail, Percent, DollarSign, Star, Palette, FileText, AlignLeft, Shield, UserCog, Link2, MapIcon, Brain, Database, ArrowRight, CreditCard, Banknote, Minus, UserPlus, ChevronDown, Users, ArrowUpRight, ArrowDownRight, LogOut, Bell, TrendingUp, History, EyeOff, LogIn, Store, Gift, Wallet, Edit2, MessageSquare, CheckCircle2 } from 'lucide-react';
 import { Button, Card, Modal, ConfirmDialog, BlurCard, SortableHeader, SafeImage } from './ui';
 import { Product, Category, Brand, StockAdjustment, CompanySettings, SupplierSync, Supplier, Purchase, Transaction, OnlineOrder, Employee, Customer, CartItem, ProductReturn, RolePermissions, Promotion, Voucher, PurchaseOrder, POSSession } from '../types';
-import { cn, logAction, safeDate, exportToExcel, getHierarchicalCategories, formatSafe, exportToCSV, generateUniqueId, isLocked, formatProductStock, calculateItemPrice, playScanSound, announcePrice } from '../lib/utils';
+import { cn, logAction, safeDate, exportToExcel, getHierarchicalCategories, formatSafe, exportToCSV, generateUniqueId, isLocked, formatProductStock, calculateItemPrice, playScanSound, announcePrice, sanitizeProductForSupabase } from '../lib/utils';
 import { printReceipt, printPurchaseOrder } from '../services/printService';
 import { format, parseISO, isWithinInterval, startOfDay, endOfDay, isToday, subDays } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -81,6 +81,7 @@ QuantityInput.displayName = 'QuantityInput';
 
 export const Checkout = memo(function Checkout({ 
   products, 
+  categories = [],
   cart, 
   setCart, 
   user, 
@@ -151,6 +152,218 @@ export const Checkout = memo(function Checkout({
   const [newProductBarcode, setNewProductBarcode] = useState('');
   const [initialCashInput, setInitialCashInput] = useState('');
   const [isOpeningSession, setIsOpeningSession] = useState(false);
+
+  // Grid Catalogue Management States
+  const [gridSearchQuery, setGridSearchQuery] = useState('');
+  const [gridActiveCategoryId, setGridActiveCategoryId] = useState('all');
+  const [gridEditMode, setGridEditMode] = useState(false);
+  const [gridEditingProduct, setGridEditingProduct] = useState<Product | null>(null);
+  const [gridIsAddingProduct, setGridIsAddingProduct] = useState(false);
+  
+  // Product creation / edit form inputs
+  const [gridFormName, setGridFormName] = useState('');
+  const [gridFormPrice, setGridFormPrice] = useState('');
+  const [gridFormCostPrice, setGridFormCostPrice] = useState('');
+  const [gridFormStock, setGridFormStock] = useState('');
+  const [gridFormBarcode, setGridFormBarcode] = useState('');
+  const [gridFormCategoryId, setGridFormCategoryId] = useState('uncategorized');
+  const [gridIsSaving, setGridIsSaving] = useState(false);
+
+  // Category inline creation input
+  const [gridNewCategoryName, setGridNewCategoryName] = useState('');
+  const [gridIsCreatingCategory, setGridIsCreatingCategory] = useState(false);
+
+  // Initialize form when editing a product properties
+  const startEditingProduct = (p: Product) => {
+    setGridEditingProduct(p);
+    setGridFormName(p.name);
+    setGridFormPrice(p.price.toString());
+    setGridFormCostPrice((p.costPrice || 0).toString());
+    setGridFormStock(p.stock.toString());
+    setGridFormBarcode(p.barcode || '');
+    setGridFormCategoryId(p.categoryId || 'uncategorized');
+  };
+
+  // Initialize form for preparing to save a brand new product
+  const startAddingProduct = () => {
+    setGridIsAddingProduct(true);
+    setGridFormName('');
+    setGridFormPrice('');
+    setGridFormCostPrice('');
+    setGridFormStock('999');
+    setGridFormBarcode('');
+    setGridFormCategoryId(gridActiveCategoryId !== 'all' ? gridActiveCategoryId : 'uncategorized');
+  };
+
+  const handleCreateGridCategory = async () => {
+    const trimmed = gridNewCategoryName.trim();
+    if (!trimmed) {
+      toast.error("Le nom de la catégorie est obligatoire.");
+      return;
+    }
+    try {
+      const newId = 'cat-' + Math.random().toString(36).substring(2, 10);
+      const { error } = await supabase.from('categories').insert({
+        id: newId,
+        name: trimmed,
+        parent_id: null,
+        image_url: null
+      });
+      if (error) throw error;
+      
+      toast.success(`Catégorie "${trimmed}" créée !`);
+      setGridFormCategoryId(newId);
+      setGridNewCategoryName('');
+      setGridIsCreatingCategory(false);
+      
+      // Dispatch event to hooks/useDataFetching.ts
+      window.dispatchEvent(new CustomEvent('category-cache-update', { 
+        detail: { id: newId, name: trimmed, parentId: null } 
+      }));
+    } catch (e: any) {
+      console.error(e);
+      toast.error(`Erreur: ${e.message}`);
+    }
+  };
+
+  const handleSaveGridProduct = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!gridFormName.trim()) {
+      toast.error("Le nom est obligatoire.");
+      return;
+    }
+    const priceNum = parseFloat(gridFormPrice);
+    if (isNaN(priceNum) || priceNum < 0) {
+      toast.error("Prix de vente invalide.");
+      return;
+    }
+
+    setGridIsSaving(true);
+    try {
+      const uniqueId = gridEditingProduct ? gridEditingProduct.id : Math.random().toString(36).substring(2, 11);
+      const stockNum = parseFloat(gridFormStock) || 0;
+      const costNum = parseFloat(gridFormCostPrice) || 0;
+      const barcodeStr = gridFormBarcode.trim() || undefined;
+
+      const productPayload: Product = {
+        id: uniqueId,
+        name: gridFormName.trim(),
+        price: priceNum,
+        costPrice: costNum,
+        stock: stockNum,
+        minStock: 2,
+        categoryId: gridFormCategoryId,
+        supplier: 'N/A',
+        unit: 'unité',
+        sku: barcodeStr || uniqueId,
+        barcode: barcodeStr,
+        status: 'active',
+        showInPos: true,
+        taxRate: 0,
+        updatedAt: new Date().toISOString()
+      };
+
+      const supabasePayload = sanitizeProductForSupabase(productPayload);
+
+      if (gridEditingProduct) {
+        const { error } = await supabase.from('products').update(supabasePayload).eq('id', uniqueId);
+        if (error) throw error;
+        toast.success("Produit mis à jour avec succès !");
+        logAction(user?.uid || 'pos', user?.displayName || 'Caisse', 'Modification Produit Caisse', 'POS', `Produit: ${productPayload.name}`);
+      } else {
+        const { error } = await supabase.from('products').insert(supabasePayload);
+        if (error) throw error;
+        toast.success("Produit ajouté avec succès !");
+        logAction(user?.uid || 'pos', user?.displayName || 'Caisse', 'Création Produit Caisse', 'POS', `Produit: ${productPayload.name}`);
+      }
+
+      // Optimistic update
+      window.dispatchEvent(new CustomEvent('product-cache-update', { detail: productPayload }));
+
+      // Reset
+      setGridEditingProduct(null);
+      setGridIsAddingProduct(false);
+    } catch (err: any) {
+      console.error(err);
+      toast.error(`Erreur d'enregistrement: ${err.message}`);
+    } finally {
+      setGridIsSaving(false);
+    }
+  };
+
+  const handleDeleteGridProduct = async (prod: Product) => {
+    if (!confirm(`Voulez-vous vraiment supprimer "${prod.name}" ?`)) return;
+    try {
+      const { error } = await supabase.from('products').delete().eq('id', prod.id);
+      if (error) throw error;
+      
+      toast.success("Produit supprimé !");
+      logAction(user?.uid || 'pos', user?.displayName || 'Caisse', 'Suppression Produit Caisse', 'POS', `Produit: ${prod.name}`);
+      
+      window.dispatchEvent(new CustomEvent('product-cache-delete', { detail: { id: prod.id } }));
+    } catch (err: any) {
+      console.error(err);
+      toast.error(`Erreur lors de la suppression: ${err.message}`);
+    }
+  };
+
+  const [gridIsDeactivatingAll, setGridIsDeactivatingAll] = useState(false);
+
+  const handleDeactivateAllGridProducts = async () => {
+    const activeGridProducts = products.filter((p: Product) => p.status === 'active' && p.showInPos !== false);
+    
+    if (activeGridProducts.length === 0) {
+      toast.info("Tous les articles de la grille sont déjà masqués !");
+      return;
+    }
+
+    if (!confirm(`Voulez-vous masquer tous les ${activeGridProducts.length} articles de la grille de la caisse ? Ils resteront visibles dans l'inventaire et vous pourrez les rajouter un par un.`)) {
+      return;
+    }
+
+    setGridIsDeactivatingAll(true);
+    try {
+      const productIds = activeGridProducts.map((p: Product) => p.id);
+      const { error } = await supabase
+        .from('products')
+        .update({ show_in_pos: false })
+        .in('id', productIds);
+
+      if (error) throw error;
+
+      activeGridProducts.forEach((p: Product) => {
+        window.dispatchEvent(new CustomEvent('product-cache-update', {
+          detail: { ...p, showInPos: false, updatedAt: new Date().toISOString() }
+        }));
+      });
+
+      toast.success(`${activeGridProducts.length} articles ont été retirés de la grille !`);
+      logAction(user?.uid || 'pos', user?.displayName || 'Caisse', 'Désactivation Massive Grille', 'POS', `${activeGridProducts.length} articles désactivés`);
+    } catch (err: any) {
+      console.error(err);
+      toast.error(`Erreur de désactivation : ${err.message}`);
+    } finally {
+      setGridIsDeactivatingAll(false);
+    }
+  };
+
+  const handleToggleProductPosVisibility = async (p: Product, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const newShowInPos = p.showInPos === false ? true : false;
+    try {
+      const { error } = await supabase.from('products').update({ show_in_pos: newShowInPos }).eq('id', p.id);
+      if (error) throw error;
+      
+      window.dispatchEvent(new CustomEvent('product-cache-update', {
+        detail: { ...p, showInPos: newShowInPos, updatedAt: new Date().toISOString() }
+      }));
+      
+      toast.success(newShowInPos ? `"${p.name}" est affiché dans la caisse.` : `"${p.name}" est masqué de la caisse.`);
+    } catch (err: any) {
+      console.error(err);
+      toast.error(`Erreur: ${err.message}`);
+    }
+  };
 
   const handleDirectOpenShift = async () => {
     if (!initialCashInput || isOpeningSession) return;
@@ -455,9 +668,15 @@ export const Checkout = memo(function Checkout({
       }
     } else {
       toast.error(`Code barres non reconnu: ${barcode}`);
-      setNewProductBarcode(barcode);
-      setIsScannerOpen(false); // Close scanner to show modal
-      setIsQuickAddModalOpen(true);
+      setIsScannerOpen(false);
+      setIsProductGridOpen(true);
+      setGridIsAddingProduct(true);
+      setGridFormName('');
+      setGridFormPrice('');
+      setGridFormCostPrice('');
+      setGridFormStock('999');
+      setGridFormBarcode(barcode);
+      setGridFormCategoryId(gridActiveCategoryId !== 'all' ? gridActiveCategoryId : 'uncategorized');
     }
   }, [products, productsCache, isPriceCheckerOpen, isReturnMode, addToCart]);
 
@@ -741,7 +960,7 @@ export const Checkout = memo(function Checkout({
       }
       else if (e.key === 'F4' || (e.altKey && e.key.toLowerCase() === 'p')) { 
         e.preventDefault(); 
-        handleCheckout('cash', true); 
+        setIsProductGridOpen(prev => !prev);
       }
       else if (e.key === 'F3' || e.key === 'F10') { 
         e.preventDefault(); 
@@ -1250,13 +1469,15 @@ export const Checkout = memo(function Checkout({
                 <button 
                   onClick={() => setIsProductGridOpen(!isProductGridOpen)}
                   className={cn(
-                    "p-3 rounded-xl border transition-all flex items-center gap-2 font-bold text-sm shadow-sm",
+                    "px-4 py-3 rounded-xl border transition-all flex items-center gap-2 font-black text-xs uppercase tracking-wider shadow-sm",
                     isProductGridOpen 
-                      ? "bg-indigo-600 text-white border-indigo-600 shadow-neon-indigo" 
-                      : "bg-slate-900/60 border-slate-800/50 text-white/40 hover:text-white hover:bg-slate-800"
+                      ? "bg-indigo-600 text-white border-indigo-500 shadow-neon-indigo" 
+                      : "bg-slate-900/60 border-slate-800/50 text-indigo-400 hover:text-indigo-300 hover:bg-slate-800"
                   )}
+                  title="Ouvrir la Grille des Articles de la Caisse (F4)"
                 >
                   <LayoutGrid size={20} />
+                  <span>Grille Articles (F4)</span>
                 </button>
                 <button 
                   onClick={() => setIsScannerOpen(true)}
@@ -1473,47 +1694,419 @@ export const Checkout = memo(function Checkout({
             </Modal>
           )}
 
+
+
           {isProductGridOpen && (
-            <div className="absolute inset-0 z-40 bg-workspace/95 backdrop-blur-xl overflow-y-auto custom-scrollbar p-6 animate-in fade-in zoom-in duration-300">
-              <div className="flex items-center justify-between mb-8">
-                <h3 className="text-3xl font-black text-white uppercase tracking-tighter">Catalogue</h3>
-                <button 
-                  onClick={() => setIsProductGridOpen(false)}
-                  className="w-14 h-14 flex items-center justify-center bg-slate-800/80 hover:bg-indigo-600 hover:text-white rounded-full text-slate-400 transition-all shadow-2xl border border-white/5 active:scale-90"
-                >
-                  <X size={28} />
-                </button>
-              </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-8 gap-4 pb-20">
-                {products.filter(p => p.showInPos !== false && p.status === 'active').map((p, idx) => (
+            <div className="absolute inset-0 z-40 bg-workspace/95 backdrop-blur-xl overflow-y-auto custom-scrollbar p-6 animate-in fade-in zoom-in duration-300 flex flex-col">
+              {/* Header with main controls */}
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4 pb-4 border-b border-white/10 flex-shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-indigo-500/20 text-indigo-400 rounded-2xl flex items-center justify-center border border-indigo-500/30">
+                    <LayoutGrid size={24} />
+                  </div>
+                  <div>
+                    <h3 className="text-2xl font-black text-white uppercase tracking-tighter">Grille de la Caisse</h3>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Gérer, ajouter et vendre tous vos articles sur place</p>
+                  </div>
+                </div>
+
+                {/* SEARCH AND QUICK ACTIONS GROUP */}
+                <div className="flex flex-wrap items-center gap-3 flex-1 md:justify-end max-w-xl">
+                  {/* Search bar */}
+                  <div className="relative flex-1 min-w-[200px]">
+                    <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                    <input 
+                      type="text"
+                      value={gridSearchQuery}
+                      onChange={e => setGridSearchQuery(e.target.value)}
+                      placeholder="Rechercher article, SKU..."
+                      className="w-full pl-10 pr-4 py-2.5 bg-slate-900/60 border border-slate-800/80 rounded-xl text-xs text-white outline-none focus:border-indigo-500 transition-all font-bold placeholder:text-slate-500"
+                    />
+                    {gridSearchQuery && (
+                      <button onClick={() => setGridSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white text-xs">✕</button>
+                    )}
+                  </div>
+
+                  {/* Actions cluster */}
                   <button 
-                    key={p.id || `grid-item-${idx}`}
-                    onClick={() => { addToCart(p); if (settings.closeGridOnSelect) setIsProductGridOpen(false); }}
-                    className="flex flex-col bg-slate-900/40 border border-slate-800/60 rounded-[2rem] p-4 hover:border-indigo-500/50 hover:bg-indigo-500/5 hover:shadow-neon-indigo transition-all text-left group box-border active:scale-95 relative overflow-hidden"
+                    onClick={startAddingProduct}
+                    className="flex items-center gap-1.5 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-xs font-black text-white uppercase tracking-wider rounded-xl transition-all shadow-md"
                   >
-                    <div className="aspect-square bg-slate-800/60 rounded-2xl mb-4 overflow-hidden border border-slate-800/40 flex items-center justify-center shadow-inner">
-                      {p.imageUrl ? (
-                        <SafeImage 
-                          src={p.imageUrl} 
-                          alt={p.name} 
-                          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" 
-                          fallback={<Package size={24} className="text-white/10" />}
-                        />
-                      ) : (
-                        <Package size={32} className="text-slate-700 group-hover:text-indigo-500/40 transition-colors" />
-                      )}
-                    </div>
-                    <p className="text-[10px] font-black text-white uppercase tracking-tight truncate mb-1 group-hover:text-indigo-400 transition-colors">{p.name}</p>
-                    <div className="flex items-center justify-between mt-auto pt-3 border-t border-slate-800/60">
-                      <p className="text-sm font-black text-indigo-400 tracking-tighter">{p.price.toFixed(2)}</p>
-                      <span className={cn(
-                        "text-[8px] font-black px-1.5 py-0.5 rounded-full uppercase tracking-tighter",
-                        p.stock <= 5 ? "bg-rose-500/10 text-rose-400" : "bg-emerald-500/10 text-emerald-400"
-                      )}>S: {formatProductStock(p, products)}</span>
-                    </div>
+                    <Plus size={15} />
+                    <span>Nouveau</span>
+                  </button>
+
+                  <button 
+                    onClick={() => setGridEditMode(!gridEditMode)}
+                    className={cn(
+                      "flex items-center gap-1.5 px-4 py-2.5 active:scale-95 text-xs font-black uppercase tracking-wider rounded-xl transition-all shadow-md border",
+                      gridEditMode 
+                        ? "bg-amber-500 hover:bg-amber-400 text-slate-950 border-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.3)]" 
+                        : "bg-slate-800/60 border-slate-700/50 text-slate-300 hover:bg-slate-700"
+                    )}
+                  >
+                    <Edit size={15} />
+                    <span>Mode Édition : {gridEditMode ? "ACTIF" : "OFF"}</span>
+                  </button>
+
+                  {gridEditMode && (
+                    <button 
+                      type="button"
+                      onClick={handleDeactivateAllGridProducts}
+                      disabled={gridIsDeactivatingAll}
+                      className="flex items-center gap-1.5 px-4 py-2.5 bg-rose-600/90 hover:bg-rose-500 active:scale-95 text-xs font-black text-white uppercase tracking-wider rounded-xl transition-all shadow-md disabled:opacity-50 disabled:pointer-events-none"
+                      title="Masquer tous les articles de la grille"
+                    >
+                      <EyeOff size={15} className="animate-pulse" />
+                      <span>{gridIsDeactivatingAll ? "Désactivation..." : "Masquer Tout"}</span>
+                    </button>
+                  )}
+
+                  <button 
+                    onClick={() => setIsProductGridOpen(false)}
+                    className="w-10 h-10 flex items-center justify-center bg-slate-800/80 hover:bg-rose-600 hover:text-white rounded-xl text-slate-400 transition-all shadow-lg border border-white/5 active:scale-90"
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
+              </div>
+
+              {/* HORIZONTAL CATEGORY NAVIGATION BAR */}
+              <div className="flex items-center gap-2 mb-6 overflow-x-auto pb-2 custom-scrollbar flex-shrink-0">
+                <button
+                  onClick={() => setGridActiveCategoryId('all')}
+                  className={cn(
+                    "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap border flex items-center gap-1.5",
+                    gridActiveCategoryId === 'all' 
+                      ? "bg-indigo-500 text-white border-indigo-400 shadow-neon-indigo" 
+                      : "bg-slate-900/60 border-slate-800/50 text-slate-400 hover:text-white hover:bg-slate-800"
+                  )}
+                >
+                  <LayoutGrid size={12} />
+                  <span>Tous les Produits</span>
+                </button>
+
+                {categories.map(cat => (
+                  <button
+                    key={cat.id}
+                    onClick={() => setGridActiveCategoryId(cat.id)}
+                    className={cn(
+                      "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap border",
+                      gridActiveCategoryId === cat.id 
+                        ? "bg-indigo-500 text-white border-indigo-400 shadow-neon-indigo" 
+                        : "bg-slate-900/60 border-slate-800/50 text-slate-400 hover:text-white hover:bg-slate-800"
+                    )}
+                  >
+                    {cat.name}
                   </button>
                 ))}
+
+                <button
+                  onClick={() => setGridIsCreatingCategory(true)}
+                  className="px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest bg-slate-800/40 hover:bg-slate-800 border border-dashed border-slate-700 text-indigo-400 hover:text-indigo-300 transition-all whitespace-nowrap flex items-center gap-1"
+                >
+                  <Plus size={12} />
+                  <span>Catégorie</span>
+                </button>
               </div>
+
+              {/* RESULTS GRID PLATFORM */}
+              <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pb-16">
+                {(() => {
+                  const filtered = products.filter(p => {
+                    if (p.status !== 'active') return false;
+                    if (p.showInPos === false && !gridEditMode) return false;
+                    if (gridActiveCategoryId !== 'all' && p.categoryId !== gridActiveCategoryId) return false;
+                    if (gridSearchQuery.trim()) {
+                      const q = gridSearchQuery.toLowerCase().trim();
+                      return (p.name || '').toLowerCase().includes(q) || 
+                             (p.sku || '').toLowerCase().includes(q) || 
+                             (p.barcode || '').toLowerCase().includes(q);
+                    }
+                    return true;
+                  });
+
+                  if (filtered.length === 0) {
+                    return (
+                      <div className="text-center py-20 bg-slate-900/10 border border-slate-800/40 rounded-[2rem] max-w-md mx-auto space-y-4">
+                        <PackageOpen size={48} className="text-slate-600 mx-auto animate-pulse" />
+                        <div>
+                          <p className="text-sm font-black uppercase tracking-wider text-slate-300">Aucun produit trouvé</p>
+                          <p className="text-xs text-slate-500 mt-1">Créez votre premier article sur place ou modifiez vos filtres !</p>
+                        </div>
+                        <button 
+                          onClick={startAddingProduct}
+                          className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-xs font-black uppercase tracking-wider text-white rounded-xl transition-all"
+                        >
+                          Créer un article maintenant
+                        </button>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+                      {filtered.map((p, idx) => {
+                        const isHidden = p.showInPos === false;
+                        return (
+                          <div 
+                            key={p.id || `grid-item-${idx}`}
+                            className={cn(
+                              "relative flex flex-col justify-between bg-slate-900/40 border border-slate-800/60 rounded-[2rem] p-4 transition-all group overflow-hidden select-none",
+                              gridEditMode 
+                                ? "border-amber-500/30 hover:border-amber-500/80 bg-amber-500/5 hover:scale-[1.01] cursor-pointer" 
+                                : "hover:border-indigo-500/50 hover:bg-indigo-500/5 hover:shadow-neon-indigo cursor-pointer active:scale-95",
+                              isHidden && "opacity-55 border-dashed border-slate-700/50 bg-slate-950/20"
+                            )}
+                            onClick={() => {
+                              if (gridEditMode) {
+                                startEditingProduct(p);
+                              } else {
+                                addToCart(p, isReturnMode ? -1 : 1);
+                                if (settings.closeGridOnSelect) setIsProductGridOpen(false);
+                              }
+                            }}
+                          >
+                          {/* Top row elements */}
+                          <div className="aspect-square bg-slate-800/60 rounded-2xl mb-3 overflow-hidden border border-slate-800/40 flex items-center justify-center shadow-inner relative">
+                            {p.imageUrl ? (
+                              <SafeImage 
+                                src={p.imageUrl} 
+                                alt={p.name} 
+                                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" 
+                                fallback={<Package size={24} className="text-white/10" />}
+                              />
+                            ) : (
+                              <Package size={28} className={cn("transition-colors", gridEditMode ? "text-amber-500/40" : "text-slate-700 group-hover:text-indigo-500/40")} />
+                            )}
+
+                            {/* HOVER / EDIT CONTROLS */}
+                            {gridEditMode && (
+                              <div className="absolute inset-0 bg-slate-950/85 flex items-center justify-center gap-2 transition-all p-2 rounded-2xl">
+                                <button
+                                  type="button"
+                                  onClick={(e) => handleToggleProductPosVisibility(p, e)}
+                                  className={cn(
+                                    "p-2 rounded-lg transition-all shadow-md transform hover:scale-115 active:scale-95",
+                                    isHidden 
+                                      ? "bg-emerald-600 hover:bg-emerald-500 text-white shadow-neon-indigo" 
+                                      : "bg-slate-800 hover:bg-slate-700 text-amber-500"
+                                  )}
+                                  title={isHidden ? "Afficher dans la caisse" : "Masquer de la caisse"}
+                                >
+                                  {isHidden ? <Eye size={14} /> : <EyeOff size={14} />}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    startEditingProduct(p);
+                                  }}
+                                  className="p-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-500 transition-all shadow-md transform hover:scale-115 active:scale-95"
+                                  title="Modifier l'article"
+                                >
+                                  <Edit2 size={14} />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteGridProduct(p);
+                                  }}
+                                  className="p-2 bg-rose-600 text-white rounded-lg hover:bg-rose-500 transition-all shadow-md transform hover:scale-115 active:scale-95"
+                                  title="Supprimer l'article"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="flex-1 flex flex-col justify-between">
+                            <div>
+                              <p className="text-[11px] font-black text-white uppercase tracking-tight line-clamp-2 mb-1 group-hover:text-indigo-400 transition-colors leading-snug">{p.name}</p>
+                              <p className="text-[8px] font-mono font-black text-slate-500 truncate uppercase tracking-widest">{p.barcode || 'Sans barres'}</p>
+                            </div>
+
+                            <div className="flex items-center justify-between mt-3 pt-2.5 border-t border-slate-800/60 flex-shrink-0">
+                              <p className="text-sm font-black text-indigo-400 tracking-tighter leading-none">{p.price.toFixed(2)} <span className="text-[9px] font-medium text-slate-500">{settings.currency}</span></p>
+                              <span className={cn(
+                                "text-[8px] font-black px-1.5 py-0.5 rounded-full uppercase tracking-tighter",
+                                p.stock <= 5 ? "bg-rose-500/10 text-rose-400" : "bg-emerald-500/10 text-emerald-400"
+                              )}>S: {formatProductStock(p, products)}</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+              </div>
+
+              {/* INLINE PRODUCT SAVE SUB-MODAL */}
+              {(gridIsAddingProduct || gridEditingProduct) && (
+                <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
+                  <div className="bg-workspace border border-slate-800 rounded-[2.5rem] w-full max-w-md p-6 overflow-hidden animate-in zoom-in-95 duration-200">
+                    <div className="flex items-center justify-between mb-5">
+                      <h4 className="text-lg font-black text-white uppercase tracking-wider">
+                        {gridEditingProduct ? "Modifier l'article" : "Nouvel article caisse"}
+                      </h4>
+                      <button 
+                        onClick={() => { setGridEditingProduct(null); setGridIsAddingProduct(false); }}
+                        className="p-1 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white"
+                      >
+                        <X size={18} />
+                      </button>
+                    </div>
+
+                    <form onSubmit={handleSaveGridProduct} className="space-y-4 text-left">
+                      {/* Name */}
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Nom de l'article *</label>
+                        <input 
+                          type="text"
+                          required
+                          value={gridFormName}
+                          onChange={e => setGridFormName(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-800 rounded-xl p-3 text-sm text-white outline-none focus:border-indigo-500 transition-all font-bold"
+                          placeholder="Ex: Café Expresso, Baguette chaude..."
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        {/* Sale Price */}
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Prix de vente *</label>
+                          <input 
+                            type="number"
+                            required
+                            step="any"
+                            value={gridFormPrice}
+                            onChange={e => setGridFormPrice(e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-800 rounded-xl p-3 text-sm text-white outline-none focus:border-indigo-500 transition-all font-black text-indigo-400 text-center"
+                            placeholder="0.00"
+                          />
+                        </div>
+
+                        {/* Cost Price */}
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Coût d'achat</label>
+                          <input 
+                            type="number"
+                            step="any"
+                            value={gridFormCostPrice}
+                            onChange={e => setGridFormCostPrice(e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-800 rounded-xl p-3 text-sm text-slate-300 outline-none focus:border-indigo-500 transition-all font-bold text-center"
+                            placeholder="0.00"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        {/* Stock */}
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Quantité en stock</label>
+                          <input 
+                            type="number"
+                            value={gridFormStock}
+                            onChange={e => setGridFormStock(e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-800 rounded-xl p-3 text-sm text-white outline-none focus:border-indigo-500 transition-all font-bold text-center"
+                            placeholder="999"
+                          />
+                        </div>
+
+                        {/* Barcode */}
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Code barres / SKU</label>
+                          <input 
+                            type="text"
+                            value={gridFormBarcode}
+                            onChange={e => setGridFormBarcode(e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-800 rounded-xl p-3 text-sm text-white outline-none focus:border-indigo-500 transition-all font-bold text-center"
+                            placeholder="Optionnel"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Category Selector */}
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Catégorie</label>
+                        <select
+                          value={gridFormCategoryId}
+                          onChange={e => setGridFormCategoryId(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-800 rounded-xl p-3 text-sm text-white outline-none focus:border-indigo-500 transition-all font-bold cursor-pointer"
+                        >
+                          <option value="uncategorized">Sans catégorie (Général)</option>
+                          {categories.map(c => (
+                            <option key={c.id} value={c.id}>{c.name}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="flex gap-3 pt-4">
+                        <button
+                          type="button"
+                          onClick={() => { setGridEditingProduct(null); setGridIsAddingProduct(false); }}
+                          className="flex-1 py-3 border border-slate-800 hover:bg-slate-900 text-xs font-black uppercase tracking-wider text-slate-400 rounded-xl transition-all"
+                        >
+                          Annuler
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={gridIsSaving}
+                          className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-500 text-xs font-black uppercase tracking-wider text-white rounded-xl transition-all flex items-center justify-center gap-2"
+                        >
+                          {gridIsSaving ? "Enregistrement..." : "Enregistrer"}
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              )}
+
+              {/* INLINE CATEGORY CREATE SUB-MODAL */}
+              {gridIsCreatingCategory && (
+                <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
+                  <div className="bg-workspace border border-slate-800 rounded-[2.5rem] w-full max-w-sm p-6 overflow-hidden animate-in zoom-in-95 duration-200">
+                    <div className="flex items-center justify-between mb-5">
+                      <h4 className="text-lg font-black text-white uppercase tracking-wider">Nouvelle Catégorie</h4>
+                      <button onClick={() => setGridIsCreatingCategory(false)} className="p-1 hover:bg-slate-800 rounded-lg text-slate-400">
+                        <X size={18} />
+                      </button>
+                    </div>
+
+                    <div className="space-y-4 text-left">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Nom de la catégorie</label>
+                        <input
+                          type="text"
+                          value={gridNewCategoryName}
+                          onChange={e => setGridNewCategoryName(e.target.value)}
+                          placeholder="Ex: Boissons, Boulangerie, Sandwichs..."
+                          className="w-full bg-slate-900 border border-slate-800 rounded-xl p-3 text-sm text-white outline-none focus:border-indigo-500 transition-all font-bold"
+                          autoFocus
+                        />
+                      </div>
+
+                      <div className="flex gap-3 pt-2">
+                        <button
+                          onClick={() => setGridIsCreatingCategory(false)}
+                          className="flex-1 py-2.5 border border-slate-800 hover:bg-slate-900 text-xs font-black uppercase tracking-wider text-slate-400 rounded-xl transition-all"
+                        >
+                          Annuler
+                        </button>
+                        <button
+                          onClick={handleCreateGridCategory}
+                          className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-xs font-black uppercase tracking-wider text-white rounded-xl transition-all"
+                        >
+                          Créer
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

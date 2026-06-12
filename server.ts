@@ -4,7 +4,6 @@ console.log("Starting server process...");
 import { Server } from "socket.io";
 import path from "path";
 import fs from "fs";
-import admin from "firebase-admin";
 import { fileURLToPath } from 'url';
 import * as dotenv from 'dotenv';
 
@@ -57,34 +56,8 @@ try {
   // Silent fail
 }
 
-let adminAuth: admin.auth.Auth | null = null;
-if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY || firebaseConfig.projectId) {
-  try {
-    let credential;
-    if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
-      try {
-        const key = process.env.FIREBASE_SERVICE_ACCOUNT_KEY.trim();
-        if (!key.startsWith('AIza')) {
-          const serviceAccount = JSON.parse(key);
-          credential = admin.credential.cert(serviceAccount);
-        }
-      } catch (parseError) {
-        // Silent fail
-      }
-    }
-
-    if (credential && firebaseConfig.projectId) {
-      admin.initializeApp({
-        credential,
-        projectId: firebaseConfig.projectId
-      });
-      adminAuth = admin.auth();
-      console.log("Firebase Admin SDK initialized.");
-    }
-  } catch (error) {
-    // Silent fail
-  }
-}
+// adminAuth is disabled since system has migrated entirely to Supabase
+let adminAuth: any = null;
 
 async function startServer() {
   try {
