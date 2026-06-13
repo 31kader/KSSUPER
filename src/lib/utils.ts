@@ -19,26 +19,18 @@ export const logAction = async (userId: string, userName: string, action: string
     const { error } = await supabase.from('audit_logs').insert({
       id,
       timestamp: now,
-      userId,
-      userName,
+      user_id: userId,
+      user_name: userName,
       action,
       module,
       details,
       severity
     });
     if (error) {
-      console.warn("Retrying logAction with fallback schema because of:", error.message);
-      const { error: fallbackError } = await supabase.from('audit_logs').insert({
-        id,
-        timestamp: now,
-        user_id: userId,
-        action,
-        details: `[Auteur: ${userName}] [Module: ${module}] [Sévérité: ${severity}] ${details}`
-      });
-      if (fallbackError) throw fallbackError;
+      console.error("Failed to log action:", error);
     }
   } catch (error) {
-    console.error("Failed to log action:", error);
+    console.error("Critical failure in logAction:", error);
   }
 };
 

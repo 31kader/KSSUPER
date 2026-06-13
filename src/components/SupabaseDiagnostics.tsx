@@ -738,15 +738,32 @@ CREATE POLICY "public_returns" ON returns FOR ALL USING (true) WITH CHECK (true)
 
 CREATE TABLE IF NOT EXISTS online_orders (
     id TEXT PRIMARY KEY,
+    external_order_id TEXT,
     customer_id TEXT,
     customer_name TEXT,
+    customer_phone TEXT,
+    customer_email TEXT,
     items JSONB,
     total NUMERIC(12,2),
     status TEXT DEFAULT 'pending',
-    shipping_address TEXT,
     payment_status TEXT DEFAULT 'unpaid',
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    payment_method TEXT,
+    source TEXT DEFAULT 'Online',
+    delivery_method TEXT DEFAULT 'delivery',
+    pickup_time TEXT,
+    shipping_address TEXT,
+    synced_to_pos BOOLEAN DEFAULT false,
+    assigned_employee_id TEXT,
+    assigned_employee_name TEXT,
+    assigned_picker_id TEXT,
+    assigned_picker_name TEXT,
+    status_history JSONB,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    timestamp TIMESTAMPTZ DEFAULT NOW()
 );
+CREATE INDEX IF NOT EXISTS idx_online_orders_status ON online_orders(status);
+CREATE INDEX IF NOT EXISTS idx_online_orders_customer ON online_orders(customer_id);
+CREATE INDEX IF NOT EXISTS idx_online_orders_created ON online_orders(created_at);
 ALTER TABLE online_orders ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "public_orders" ON online_orders;
 CREATE POLICY "public_orders" ON online_orders FOR ALL USING (true) WITH CHECK (true);

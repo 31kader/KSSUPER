@@ -1,9 +1,7 @@
 import { DEFAULT_PERMISSIONS } from '../constants';
 import React, { useState, useMemo, memo, useEffect, useRef } from 'react';
 import { Package, Tag, RefreshCw, LayoutGrid, Plus, FileSpreadsheet, Upload, ShoppingBag, AlertTriangle, Zap, Info, Search, Filter, Scan, LayoutList, Layers, Truck, ArrowUpDown, Award, Calendar, FolderTree, AlertCircle, TrendingDown, ShieldCheck, RotateCcw, Check, Printer, Copy, PackageOpen, Trash2, ChevronUp, BarcodeIcon, ShoppingCart, Eye, X, MessageCircle, Phone, MapPin, Navigation, Edit, Clock, Mail, Percent, DollarSign, Star, Palette, FileText, AlignLeft, Shield, UserCog, Link2, MapIcon, Brain, Database, ArrowRight, CreditCard, Banknote, Minus, UserPlus, ChevronDown, Users, ArrowUpRight, ArrowDownRight } from 'lucide-react';
-import { 
-  rtdb, ref, update, push, set, remove, get, auth, handleFirestoreError, OperationType, runRtdbTransaction, rtdbQuery as query, orderByChild as orderBy, onValue
-} from '../database';
+import { supabase, isSupabaseConfigured } from '../supabase';
 import { Button, Card, Modal, ConfirmDialog, BlurCard, SortableHeader } from './ui';
 import { Product, Category, Brand, StockAdjustment, CompanySettings, SupplierSync, Supplier, Purchase, Transaction, OnlineOrder, Employee, Customer, CartItem, ProductReturn, RolePermissions } from '../types';
 import { cn, logAction, safeDate, exportToExcel, getHierarchicalCategories, formatSafe, exportToCSV, generateUniqueId, isLocked } from '../lib/utils';
@@ -90,7 +88,8 @@ export function Orders({ orders, products, syncOrder, autoSync, setAutoSync, set
   customers: Customer[]
 }) {
   const { t } = useTranslation();
-  const [selectedOrder, setSelectedOrder] = useState<OnlineOrder | null>(null);
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const selectedOrder = useMemo(() => orders.find(o => o.id === selectedOrderId) || null, [orders, selectedOrderId]);
   const [orderToDelete, setOrderToDelete] = useState<string | null>(null);
   const [isEditingItems, setIsEditingItems] = useState(false);
   const [isSyncing, setIsSyncing] = useState<string | null>(null);
@@ -98,19 +97,19 @@ export function Orders({ orders, products, syncOrder, autoSync, setAutoSync, set
   const [deliveryFilter, setDeliveryFilter] = useState<string>('all');
   const [enlargedImage, setEnlargedImage] = useState<string | null>(null);
 
+  const resolveCustomerInfo = (order: OnlineOrder) => {
+    if (!order) return { name: 'Client Inconnu', phone: '' };
+    const customer = order.customerId ? customers.find(c => c.id === order.customerId) : null;
+    return {
+      name: order.customerName || customer?.name || 'Client Inconnu',
+      phone: order.customerPhone || customer?.phone || ''
+    };
+  };
+
   const filteredOrders = orders.filter(o => 
     (statusFilter === 'all' || o.status === statusFilter) &&
     (deliveryFilter === 'all' || o.deliveryMethod === deliveryFilter)
   );
-
-  useEffect(() => {
-    if (selectedOrder) {
-      const updatedOrder = orders.find(o => o.id === selectedOrder.id);
-      if (updatedOrder && JSON.stringify(updatedOrder) !== JSON.stringify(selectedOrder)) {
-        setSelectedOrder(updatedOrder);
-      }
-    }
-  }, [orders, selectedOrder]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -126,130 +125,172 @@ export function Orders({ orders, products, syncOrder, autoSync, setAutoSync, set
 
   const updateOrderPaymentStatus = async (order: OnlineOrder, newPaymentStatus: OnlineOrder['paymentStatus']) => {
     try {
-      await update(ref(rtdb, `onlineOrders/${order.id}`), { paymentStatus: newPaymentStatus });
+      const { error } = await supabase
+        .from('online_orders')
+        .update({ payment_status: newPaymentStatus })
+        .eq('id', order.id);
+      
+      if (error) throw error;
     } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, 'onlineOrders');
+      console.error('Error updating payment status:', error);
+      toast.error('Erreur lors de la mise à jour du paiement.');
     }
   };
 
   const updateOrderStatus = async (order: OnlineOrder, newStatus: OnlineOrder['status']) => {
     try {
-      const updates: any = {};
-      updates[`onlineOrders/${order.id}/status`] = newStatus;
-      
-      // Status history
-      const user = auth.currentUser;
-      const historyEntry = {
-        status: newStatus,
-        changedBy: user?.email || 'System',
-        timestamp: new Date().toISOString()
-      };
-      const newStatusHistory = [...(order.statusHistory || []), historyEntry];
-      updates[`onlineOrders/${order.id}/statusHistory`] = newStatusHistory;
+      // Simple update: only update the status column to avoid schema issues with history
+      const { error } = await supabase
+        .from('online_orders')
+        .update({ status: newStatus })
+        .eq('id', order.id);
 
+      if (error) throw error;
+      
       // Find customer ID if null but we have their phone or name
       let finalCustomerId = order.customerId;
       if (!finalCustomerId) {
-        const found = customers.find(c => 
+        const found = customers.find((c: Customer) => 
           (order.customerPhone && c.phone && c.phone.replace(/\D/g, '') === order.customerPhone.replace(/\D/g, '')) || 
-          (c.name && order.customerName && c.name.toLowerCase() === order.customerName.toLowerCase())
+          (c.name.toLowerCase() === order.customerName?.toLowerCase())
         );
+        
         if (found) {
           finalCustomerId = found.id;
-          updates[`onlineOrders/${order.id}/customerId`] = found.id;
+          await supabase
+            .from('online_orders')
+            .update({ customer_id: finalCustomerId })
+            .eq('id', order.id);
         }
       }
 
-      // If just delivered, log as a finalized transaction for daily reports
+      // If just delivered, log as a finalized transaction
       if (newStatus === 'delivered' && order.status !== 'delivered') {
         if (!order.syncedToPos) {
-          const transactionRef = push(ref(rtdb, 'transactions'));
-          const transaction: Transaction = {
-            id: transactionRef.key!,
-            items: order.items as unknown as CartItem[],
-            total: order.total,
-            timestamp: new Date().toISOString(),
-            paymentMethod: (order.paymentMethod as 'cash' | 'card') || 'cash',
-            status: 'completed',
-            employeeName: 'Système (Online)',
-            userId: 'system',
-            onlineOrderId: order.id,
-            customerId: finalCustomerId || null,
-            customerName: order.customerName || null,
-            pointsEarned: finalCustomerId ? Math.floor(order.total * (settings.loyaltyPointsPerCurrencyUnit || 1)) : 0
-          };
-          updates[`transactions/${transactionRef.key}`] = transaction;
-          updates[`onlineOrders/${order.id}/syncedToPos`] = true;
+          const { data: transaction, error: transError } = await supabase
+            .from('transactions')
+            .insert({
+              items: order.items,
+              total: order.total,
+              timestamp: new Date().toISOString(),
+              payment_method: (order.paymentMethod as 'cash' | 'card') || 'cash',
+              status: 'completed',
+              employee_name: 'Système (Online)',
+              user_id: 'system',
+              online_order_id: order.id,
+              customer_id: finalCustomerId || null,
+              customer_name: order.customerName || null,
+              points_earned: finalCustomerId ? Math.floor(order.total * (settings.loyaltyPointsPerCurrencyUnit || 1)) : 0
+            })
+            .select()
+            .single();
+            
+          if (transError) throw transError;
+          
+          await supabase
+            .from('online_orders')
+            .update({ synced_to_pos: true })
+            .eq('id', order.id);
         }
         
         // Update customer's loyalty points
         if (finalCustomerId) {
-          try {
-            const customer = customers.find(c => c.id === finalCustomerId);
-            if (customer) {
-              const pointsEarned = Math.floor(order.total * (settings.loyaltyPointsPerCurrencyUnit || 1));
-              updates[`customers/${finalCustomerId}/loyaltyPoints`] = (customer.loyaltyPoints || 0) + pointsEarned;
-              updates[`customers/${finalCustomerId}/totalSpent`] = (customer.totalSpent || 0) + order.total;
-              updates[`customers/${finalCustomerId}/lastVisit`] = new Date().toISOString();
-            }
-          } catch (e) {
-            console.error("Failed to prepare customer loyalty points update:", e);
+          const { data: customer } = await supabase
+            .from('customers')
+            .select('loyalty_points, total_spent')
+            .eq('id', finalCustomerId)
+            .single();
+          
+          if (customer) {
+            const pointsEarned = Math.floor(order.total * (settings.loyaltyPointsPerCurrencyUnit || 1));
+            await supabase
+              .from('customers')
+              .update({ 
+                loyalty_points: (customer.loyalty_points || 0) + pointsEarned,
+                total_spent: (customer.total_spent || 0) + order.total,
+                last_visit: new Date().toISOString()
+              })
+              .eq('id', finalCustomerId);
           }
         }
       }
-
-      await update(ref(rtdb), updates);
     } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, 'onlineOrders');
+      console.error('Error updating order:', error);
+      toast.error('Erreur lors de la mise à jour de la commande.');
     }
   };
 
   const assignOrderToEmployee = async (order: OnlineOrder, employeeId: string) => {
     try {
       const employee = employees.find(e => e.id === employeeId);
-      const updates: any = {
-        assignedEmployeeId: employeeId,
-        assignedEmployeeName: employee?.name || 'Inconnu'
-      };
-      await update(ref(rtdb, `onlineOrders/${order.id}`), updates);
+      const { error } = await supabase
+        .from('online_orders')
+        .update({ 
+          assigned_employee_id: employeeId,
+          assigned_employee_name: employee?.name || 'Inconnu'
+        })
+        .eq('id', order.id);
+      if (error) throw error;
     } catch (error) {
       console.error('Error assigning order:', error);
+      toast.error('Erreur lors de l\'assignation de la commande.');
     }
   };
 
   const assignPickerToOrder = async (order: OnlineOrder, pickerId: string) => {
     try {
       const picker = employees.find(e => e.id === pickerId);
-      const updates: any = {
-        assignedPickerId: pickerId,
-        assignedPickerName: picker?.name || 'Inconnu'
-      };
-      await update(ref(rtdb, `onlineOrders/${order.id}`), updates);
+      const { error } = await supabase
+        .from('online_orders')
+        .update({ 
+          assigned_picker_id: pickerId,
+          assigned_picker_name: picker?.name || 'Inconnu'
+        })
+        .eq('id', order.id);
+      if (error) throw error;
     } catch (error) {
       console.error('Error assigning picker:', error);
+      toast.error('Erreur lors de l\'assignation du préparateur.');
     }
   };
 
+  // Prevent multiple assignment calls for the same order
+  const assigningOrders = useRef<Set<string>>(new Set());
+
   // Auto-assignment logic (Round-Robin)
   useEffect(() => {
-    const unassignedOrders = orders.filter(o => o.status === 'pending' && !o.assignedPickerId);
+    const unassignedOrders = orders.filter(o => 1 
+      && o.status === 'pending' 
+      && !o.assignedPickerId 
+      && !assigningOrders.current.has(o.id)
+    );
+    
     if (unassignedOrders.length > 0) {
       const pickers = employees.filter(e => e.role === 'picker');
       if (pickers.length > 0) {
         unassignedOrders.forEach((order, index) => {
+          assigningOrders.current.add(order.id);
           // simple distribution: use order index or timestamp to distribute
           const pickerIndex = (orders.filter(o => o.assignedPickerId).length + index) % pickers.length;
           const targetPicker = pickers[pickerIndex];
-          assignPickerToOrder(order, targetPicker.id);
+          assignPickerToOrder(order, targetPicker.id).finally(() => {
+             // We keep it in assigningOrders for a bit to allow sync to catch up
+             setTimeout(() => assigningOrders.current.delete(order.id), 5000);
+          });
         });
       }
     }
-  }, [orders, employees]);
+  }, [orders, employees, assignPickerToOrder]);
   const updateDeliveryMethod = async (order: OnlineOrder, newMethod: 'delivery' | 'pickup') => {
     try {
-      await update(ref(rtdb, `onlineOrders/${order.id}`), { deliveryMethod: newMethod });
+      const { error } = await supabase
+        .from('online_orders')
+        .update({ delivery_method: newMethod })
+        .eq('id', order.id);
+      if (error) throw error;
     } catch (error) {
       console.error('Error updating delivery method:', error);
+      toast.error('Erreur lors de la mise à jour de la méthode de livraison.');
     }
   };
 
@@ -270,29 +311,36 @@ export function Orders({ orders, products, syncOrder, autoSync, setAutoSync, set
         stockChanges[item.productId] = (stockChanges[item.productId] || 0) - item.quantity;
       }
       
-      const updates: any = {};
-      
       // Update stocks
       for (const [productId, change] of Object.entries(stockChanges)) {
         if (change === 0 || !productId || productId === 'undefined') continue;
         const product = products.find(p => p.id === productId);
         if (product) {
-          updates[`products/${productId}/stock`] = (product.stock || 0) + change;
+          const { error } = await supabase
+            .from('products')
+            .update({ stock: (product.stock || 0) + change })
+            .eq('id', productId);
+          if (error) throw error;
         }
       }
       
       // Update order
       const newTotal = newItems.reduce((sum, item) => sum + ((item.price || 0) * item.quantity), 0);
-      updates[`onlineOrders/${order.id}/items`] = newItems;
-      updates[`onlineOrders/${order.id}/total`] = newTotal;
-
-      await update(ref(rtdb), updates);
+      const { error: orderError } = await supabase
+        .from('online_orders')
+        .update({ 
+            items: newItems,
+            total: newTotal
+        })
+        .eq('id', order.id);
+        
+      if (orderError) throw orderError;
       
       setIsEditingItems(false);
-      setSelectedOrder(null);
+      setSelectedOrderId(null);
     } catch (error) {
       console.error('Error saving order items:', error);
-      alert('Erreur lors de la sauvegarde des articles.');
+      toast.error('Erreur lors de la sauvegarde des articles.');
     }
   };
 
@@ -305,11 +353,15 @@ export function Orders({ orders, products, syncOrder, autoSync, setAutoSync, set
       return;
     }
     try {
-      await remove(ref(rtdb, `onlineOrders/${orderToDelete}`));
+      const { error } = await supabase
+        .from('online_orders')
+        .delete()
+        .eq('id', orderToDelete);
+      if (error) throw error;
       setOrderToDelete(null);
     } catch (error) {
       console.error('Error deleting order:', error);
-      alert('Erreur lors de la suppression de la commande.');
+      toast.error('Erreur lors de la suppression de la commande.');
     }
   };
 
@@ -321,11 +373,14 @@ export function Orders({ orders, products, syncOrder, autoSync, setAutoSync, set
 
   const handleYassirRequest = async (order: OnlineOrder) => {
     try {
-      const updates: any = {
-        assignedEmployeeId: 'YASSIR_EXT',
-        assignedEmployeeName: 'Yassir Express'
-      };
-      await update(ref(rtdb, `onlineOrders/${order.id}`), updates);
+      const { error } = await supabase
+        .from('online_orders')
+        .update({ 
+            assigned_employee_id: 'YASSIR_EXT',
+            assigned_employee_name: 'Yassir Express'
+        })
+        .eq('id', order.id);
+      if (error) throw error;
       toast.success(t("Commande assignée à Yassir Express. Veuillez finaliser la demande sur votre application Yassir."));
     } catch (e) {
       console.error(e);
@@ -601,7 +656,7 @@ export function Orders({ orders, products, syncOrder, autoSync, setAutoSync, set
                       <Printer size={18} />
                     </button>
                     <button 
-                      onClick={() => setSelectedOrder(o)}
+                      onClick={() => setSelectedOrderId(o.id)}
                       className="p-2 text-white/40 hover:text-indigo-400 hover:bg-white/5 rounded-xl transition-all"
                       title="Voir les détails"
                     >
@@ -628,7 +683,7 @@ export function Orders({ orders, products, syncOrder, autoSync, setAutoSync, set
       </Card>
 
       {selectedOrder && (
-        <Modal isOpen={!!selectedOrder} onClose={() => { setSelectedOrder(null); setIsEditingItems(false); }} title={`Détails Commandes #${selectedOrder.externalOrderId || selectedOrder.id.slice(0, 8)}`}>
+        <Modal isOpen={!!selectedOrder} onClose={() => { setSelectedOrderId(null); setIsEditingItems(false); }} title={selectedOrder ? `Détails Commandes #${selectedOrder.externalOrderId || selectedOrder.id.slice(0, 8)}` : "Détails"}>
           <div className="space-y-8">
             {isEditingItems ? (
               <EditOrderItems order={selectedOrder} onSave={saveOrderItems} onCancel={() => setIsEditingItems(false)} settings={settings} />

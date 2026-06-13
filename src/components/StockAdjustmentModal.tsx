@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Package } from 'lucide-react';
 import { supabase } from '../supabase';
+import { convertKeysToSnake } from '../database';
 import { Product, CompanySettings } from '../types';
 import { Button, Modal } from './ui';
 import { toast } from 'sonner';
@@ -104,11 +105,11 @@ export function StockAdjustmentModal({
         isLoss: isLossRecord
       };
       
-      const { error: adjError } = await supabase.from('stockAdjustments').insert(adjustmentData);
+      const { error: adjError } = await supabase.from('stock_adjustments').insert(convertKeysToSnake(adjustmentData));
       if (adjError) throw adjError;
 
       if (isLossRecord) {
-        const { error: damError } = await supabase.from('damaged_items').insert({
+        const { error: damError } = await supabase.from('damaged_items').insert(convertKeysToSnake({
           id: Math.random().toString(36).substring(2, 10),
           productId: product.id,
           productName: product.name,
@@ -119,7 +120,7 @@ export function StockAdjustmentModal({
           userName: user.displayName || 'Inconnu',
           claimStatus: 'to_claim',
           costPrice: product.costPrice || 0
-        });
+        }));
         if (damError) throw damError;
       }
 

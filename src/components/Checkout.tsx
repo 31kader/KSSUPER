@@ -1,4 +1,5 @@
 import { supabase } from '../supabase';
+import { convertKeysToSnake, convertKeysToCamel } from '../database';
 import { toast } from 'sonner';
 import { DEFAULT_PERMISSIONS } from '../constants';
 import { QuickAddProductModal } from './QuickAddProductModal';
@@ -498,7 +499,7 @@ export const Checkout = memo(function Checkout({
         const { data: draft, error } = await supabase
           .from('cart_drafts')
           .select('*')
-          .eq('userId', user.uid)
+          .eq('user_id', user.uid)
           .single();
 
         if (error && error.code !== 'PGRST116') throw error; // PGRST116 is not found
@@ -532,7 +533,7 @@ export const Checkout = memo(function Checkout({
         const hasContent = posSessions.some(s => s.cart.length > 0);
         
         if (!hasContent) {
-          await supabase.from('cart_drafts').delete().eq('userId', user.uid);
+          await supabase.from('cart_drafts').delete().eq('user_id', user.uid);
           return;
         }
 
@@ -544,12 +545,12 @@ export const Checkout = memo(function Checkout({
           })
         }));
 
-        await supabase.from('cart_drafts').upsert({
+        await supabase.from('cart_drafts').upsert(convertKeysToSnake({
           userId: user.uid,
           sessions: sanitizedSessions,
           activeSessionId,
           updatedAt: new Date().toISOString()
-        });
+        }));
       } catch (error: any) {
         console.error("Error saving cart draft:", error);
       }
@@ -779,7 +780,7 @@ export const Checkout = memo(function Checkout({
           console.error("Failed to write to offline storage:", err);
         }
       } else {
-        const { error: txError } = await supabase.from('transactions').insert(transaction);
+        const { error: txError } = await supabase.from('transactions').insert(convertKeysToSnake(transaction));
         if (txError) throw txError;
       }
       logAction(user.uid, user.displayName || 'Utilisateur', 'Vente', 'POS', `Vente de ${total.toFixed(2)} ${settings.currency} via ${method}`);
@@ -795,7 +796,7 @@ export const Checkout = memo(function Checkout({
               const currentStock = pData?.stock || 0;
               await supabase.from('products').update({ 
                   stock: currentStock - (bundleItem.quantity * item.quantity),
-                  updatedAt: new Date().toISOString()
+                  updated_at: new Date().toISOString()
               }).eq('id', componentProduct.id);
             }
           }
@@ -894,12 +895,12 @@ export const Checkout = memo(function Checkout({
         const cashierNotes = [...(selectedCustomer.cashierNotes || []), noteEntry];
         
         await supabase.from('customers').update({
-            cashierNotes,
-            loyaltyPoints: (selectedCustomer.loyaltyPoints || 0) + pointsEarned - pointsSpent,
+            cashier_notes: cashierNotes,
+            loyalty_points: (selectedCustomer.loyaltyPoints || 0) + pointsEarned - pointsSpent,
             balance: finalBalance,
-            totalSpent: (selectedCustomer.totalSpent || 0) + total,
-            updatedAt: new Date().toISOString(),
-            lastVisit: new Date().toISOString()
+            total_spent: (selectedCustomer.totalSpent || 0) + total,
+            updated_at: new Date().toISOString(),
+            last_visit: new Date().toISOString()
         }).eq('id', selectedCustomer.id);
       }
 
@@ -917,11 +918,13 @@ export const Checkout = memo(function Checkout({
         };
         const currentLogs = appliedVoucher.usageLogs || [];
         
-        await supabase.from('vouchers').update({
+        const snakeData = convertKeysToSnake({
             currentBalance: Math.max(0, newBalance),
             status: isFullyUsed ? 'used' : 'active',
             usageLogs: [...currentLogs, newLog]
-        }).eq('id', appliedVoucher.id);
+        });
+        
+        await supabase.from('vouchers').update(snakeData).eq('id', appliedVoucher.id);
       }
 
       setLastTransaction({ ...transaction, id: transactionId, paymentMethod: method } as Transaction);
@@ -1011,7 +1014,7 @@ export const Checkout = memo(function Checkout({
         return;
       }
       
-      const voucher = data[0] as Voucher;
+      const voucher = convertKeysToCamel(data[0]) as Voucher;
       
       // Basic Expiry Check
       if (voucher.expiryDate && new Date(voucher.expiryDate) < new Date()) {

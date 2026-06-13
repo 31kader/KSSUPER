@@ -9,6 +9,7 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import bcrypt from 'bcryptjs';
 import { supabase } from '../supabase';
+import { convertKeysToSnake } from '../database';
 import { 
   Customer, Transaction, CompanySettings 
 } from '../types';
@@ -78,13 +79,14 @@ export const Customers = memo(function Customers({
       
       const newNotes = [...(selectedCustomer.cashierNotes || []), noteEntry];
 
+      const snakeData = convertKeysToSnake({
+        balance: newBalance,
+        cashierNotes: newNotes
+      });
+
       const { error: customerError } = await supabase
         .from('customers')
-        .update({
-          balance: newBalance,
-          cashierNotes: newNotes,
-          updatedAt: new Date().toISOString()
-        })
+        .update(snakeData)
         .eq('id', selectedCustomer.id);
       if (customerError) throw customerError;
 
@@ -152,7 +154,7 @@ export const Customers = memo(function Customers({
       finalPassword = bcrypt.hashSync(formData.password, 10);
     }
 
-    const data = {
+    const dataToSave = {
       ...formData,
       email: formData.email ? formData.email.trim().toLowerCase() : '',
       loyaltyPoints: editingCustomer?.loyaltyPoints || 0,
@@ -162,17 +164,33 @@ export const Customers = memo(function Customers({
       updatedAt: new Date().toISOString()
     };
 
+    const snakeData = convertKeysToSnake(dataToSave);
+    
+    // Map password to password_hash if it exists, or remove if empty
+    if ('password' in snakeData) {
+      if (snakeData.password) {
+        snakeData.password_hash = snakeData.password;
+      }
+      delete snakeData.password;
+    }
+
     try {
       if (editingCustomer) {
         const { error } = await supabase
           .from('customers')
-          .update(data)
+          .update(snakeData)
           .eq('id', editingCustomer.id);
         if (error) throw error;
       } else {
         const { error } = await supabase
           .from('customers')
-          .insert({ id: Math.random().toString(36).substring(2, 10), ...data, loyaltyPoints: 0, balance: 0, totalSpent: 0 });
+          .insert({ 
+            id: Math.random().toString(36).substring(2, 10), 
+            ...snakeData, 
+            loyalty_points: 0, 
+            balance: 0, 
+            total_spent: 0 
+          });
         if (error) throw error;
       }
       setIsModalOpen(false);

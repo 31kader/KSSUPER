@@ -198,7 +198,8 @@ import {
   rtdb, ref, get, set, remove, child, update, push, rtdbQuery, equalTo, orderByChild,
   signInWithEmailAndPassword, signOut, signInWithPopup, onAuthStateChanged,
   createUserWithEmailAndPassword,
-  onSyncUpdate
+  onSyncUpdate,
+  onBackgroundSyncStatus
 } from './database';
 import { isSupabaseConfigured } from './supabase';
 import { 
@@ -500,10 +501,20 @@ export default function App() {
 
   const [activeTab, setActiveTabState] = useState(getInitialTab());
   const [syncInfo, setSyncInfo] = useState<any>({ active: false, progress: 0, currentTable: '' });
+  const [bgSyncActive, setBgSyncActive] = useState(false);
+  const [bgPendingChanges, setBgPendingChanges] = useState(0);
 
   useEffect(() => {
     const unsub = onSyncUpdate((status) => {
       setSyncInfo(status);
+    });
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    const unsub = onBackgroundSyncStatus((active, count) => {
+      setBgSyncActive(active);
+      setBgPendingChanges(count);
     });
     return () => unsub();
   }, []);
@@ -850,10 +861,27 @@ export default function App() {
   };
 
   // Auto-sync logic
+  const syncInProgress = useRef<Set<string>>(new Set());
+
   useEffect(() => {
     if (autoSyncOrders && onlineOrders.length > 0) {
-      const unsynced = onlineOrders.filter(o => !o.syncedToPos && ['confirmed', 'shipped', 'delivered'].includes(o.status));
-      unsynced.forEach(o => syncOrder(o));
+      const unsynced = onlineOrders.filter(o => 
+        !o.syncedToPos && 
+        ['confirmed', 'shipped', 'delivered'].includes(o.status) &&
+        !syncInProgress.current.has(o.id)
+      );
+
+      unsynced.forEach(async (o) => {
+        syncInProgress.current.add(o.id);
+        try {
+          await syncOrder(o);
+        } finally {
+          // Keep it in set for a bit to avoid immediate re-trigger if state update is slow
+          setTimeout(() => {
+            syncInProgress.current.delete(o.id);
+          }, 5000);
+        }
+      });
     }
   }, [onlineOrders, autoSyncOrders]);
 
@@ -1620,38 +1648,55 @@ export default function App() {
         {/* Vision Cloud Sync & Offline Status Indicator */}
         <div className="fixed bottom-24 right-6 sm:bottom-8 sm:right-8 z-[100] pointer-events-none">
           <AnimatePresence>
-            {(syncInfo.active || !isOnline) && (
+            {(syncInfo.active || !isOnline || bgSyncActive || bgPendingChanges > 0) && (
               <motion.div
                 initial={{ opacity: 0, scale: 0.8, y: 20 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.8, y: 20 }}
                 transition={{ type: "spring", damping: 20, stiffness: 300 }}
                 className={cn(
-                  "p-3 rounded-2xl shadow-2xl backdrop-blur-xl border flex items-center gap-3 pointer-events-auto min-w-[200px]",
+                  "p-3 rounded-2xl shadow-2xl backdrop-blur-xl border flex items-center gap-3 pointer-events-auto min-w-[220px]",
                   !isOnline 
                     ? "bg-rose-500/20 border-rose-500/30 text-rose-400" 
-                    : "bg-indigo-500/20 border-indigo-500/30 text-indigo-400"
+                    : (bgSyncActive || bgPendingChanges > 0)
+                      ? "bg-amber-500/25 border-amber-500/35 text-amber-400"
+                      : "bg-indigo-500/20 border-indigo-500/30 text-indigo-400"
                 )}
               >
                 <div className={cn(
                   "w-10 h-10 rounded-xl flex items-center justify-center relative shadow-lg",
-                  !isOnline ? "bg-rose-500/20" : "bg-indigo-500/20"
+                  !isOnline 
+                    ? "bg-rose-500/20" 
+                    : (bgSyncActive || bgPendingChanges > 0)
+                      ? "bg-amber-500/20"
+                      : "bg-indigo-500/20"
                 )}>
                   {!isOnline ? (
                     <div className="relative">
-                      <Database size={20} className=" opacity-30" />
+                      <Database size={20} className="opacity-30" />
                       <XCircle size={12} className="absolute -top-1 -right-1 text-rose-500" />
                     </div>
                   ) : (
                     <RefreshCw size={20} className="animate-spin" />
                   )}
                 </div>
-                <div className="min-w-0 pr-2">
+                <div className="min-w-0 pr-2 flex-1">
                   <p className="text-[10px] font-black uppercase tracking-widest opacity-60">Vision System</p>
                   <p className="text-xs font-black truncate uppercase tracking-tighter">
-                    {!isOnline ? t("Mode Hors-ligne Actif") : `${t("Synchronisation")} ${syncInfo.progress}%`}
+                    {!isOnline 
+                      ? t("Mode Hors-ligne Actif") 
+                      : bgSyncActive 
+                        ? "Mise à jour Cloud..." 
+                        : bgPendingChanges > 0 
+                          ? "Attente de sync." 
+                          : `${t("Synchronisation")} ${syncInfo.progress}%`}
                   </p>
-                  {syncInfo.active && isOnline && (
+                  {bgPendingChanges > 0 && (
+                    <p className="text-[9px] font-bold opacity-80 mt-0.5">
+                      {bgPendingChanges} {bgPendingChanges > 1 ? "modifications en cours" : "modification en cours"}
+                    </p>
+                  )}
+                  {syncInfo.active && isOnline && bgPendingChanges === 0 && (
                     <div className="w-full h-1 bg-white/10 rounded-full mt-1 overflow-hidden">
                       <motion.div 
                         initial={{ width: 0 }}

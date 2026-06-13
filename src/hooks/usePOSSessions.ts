@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { POSSession, Transaction, Customer } from '../types';
 import { generateUniqueId } from '../lib/utils';
 
@@ -10,7 +10,7 @@ export function usePOSSessions(customers: Customer[], setActiveTab: (tab: string
   });
   const [activeSessionId, setActiveSessionId] = useState<string>(() => posSessions[0].id);
 
-  const activeSession = posSessions.find(s => s.id === activeSessionId) || posSessions[0];
+  const activeSession = useMemo(() => posSessions.find(s => s.id === activeSessionId) || posSessions[0], [posSessions, activeSessionId]);
   const cart = activeSession.cart;
   const selectedCustomer = activeSession.selectedCustomer;
 

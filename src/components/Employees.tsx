@@ -11,7 +11,7 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import bcrypt from 'bcryptjs';
 import { supabase } from '../supabase';
-import { auth, handleFirestoreError, OperationType } from '../database';
+import { auth, handleFirestoreError, OperationType, convertKeysToSnake } from '../database';
 import { 
   Employee, Transaction, AttendanceRecord, AdvanceRecord, 
   CompanySettings, UserProfile, RolePermissions 
@@ -757,7 +757,10 @@ export const AdvancesTab = memo(function AdvancesTab({ advances, employees, sett
       const newId = Math.random().toString(36).substring(2, 10);
       const { error } = await supabase.from('advances').insert({
         id: newId,
-        ...formData,
+        employee_id: formData.employeeId,
+        amount: formData.amount,
+        date: formData.date,
+        reason: formData.reason,
         status: 'pending'
       });
       if (error) throw error;
@@ -973,7 +976,12 @@ export function TeamManagement({ users, employees, settings, setIsAddUserModalOp
         [permission]: !currentPermissions[permission]
       };
 
-      await supabase.from('settings').update({ [`company/rolePermissions/${role}`]: newPermissions }).eq('id', 'global');
+      const updatedRolePermissions = {
+        ...(settings.rolePermissions || {}),
+        [role]: newPermissions
+      };
+
+      await supabase.from('settings').update({ role_permissions: updatedRolePermissions }).eq('id', 'global');
     } catch (error: any) {
       alert("Erreur: " + error.message);
     } finally {
@@ -1007,9 +1015,9 @@ export function TeamManagement({ users, employees, settings, setIsAddUserModalOp
     if (!userToDelete) return;
     setIsProcessing(true);
     try {
+      const userProfile = users.find(u => u.id === userToDelete);
       await supabase.from('users').delete().eq('id', userToDelete);
       // Also delete employee record if linked
-      const userProfile = users.find(u => u.id === userToDelete);
       if (userProfile?.employeeId) {
         await supabase.from('employees').delete().eq('id', userProfile.employeeId);
       }
@@ -1036,13 +1044,13 @@ export function TeamManagement({ users, employees, settings, setIsAddUserModalOp
       // Delete users (except self)
       const userVictims = users.filter(u => u.uid !== currentUserUid && u.email !== ownerEmail);
       for (const u of userVictims) {
-        if (u.id) await supabase.from('users').delete().eq('id', u.id);
-      }
-
-      // Delete employees (except self if listed)
-      const empVictims = employees.filter(e => e.email !== ownerEmail);
-      for (const e of empVictims) {
-        if (e.id) await supabase.from('employees').delete().eq('id', e.id);
+        if (u.id) {
+          const profile = users.find(usr => usr.id === u.id);
+          await supabase.from('users').delete().eq('id', u.id);
+          if (profile?.employeeId) {
+            await supabase.from('employees').delete().eq('id', profile.employeeId);
+          }
+        }
       }
 
       alert("Purge terminée avec succès.");
@@ -1617,17 +1625,21 @@ export const Employees = memo(function Employees({ employees, transactions, atte
         ...rawFirestoreData,
         name: trimmedName,
         email: trimmedEmail,
-        phone: trimmedPhone,
-        updatedAt: new Date().toISOString()
+        phone: trimmedPhone
       };
       
+      const snakeData = convertKeysToSnake(firestoreData);
+      // Remove any unwanted fields like password if they leaked
+      delete snakeData.password;
+      delete (snakeData as any).updated_at;
+
       let docId = editingEmployee?.id;
       
       if (editingEmployee) {
-        await supabase.from('employees').update(firestoreData).eq('id', editingEmployee.id);
+        await supabase.from('employees').update(snakeData).eq('id', editingEmployee.id);
       } else {
         const newId = Math.random().toString(36).substring(2, 10);
-        await supabase.from('employees').insert({ id: newId, ...firestoreData });
+        await supabase.from('employees').insert({ id: newId, ...snakeData });
         docId = newId;
       }
 
@@ -1644,7 +1656,7 @@ export const Employees = memo(function Employees({ employees, transactions, atte
             email: trimmedEmail,
             phone: trimmedPhone,
             role: formData.role,
-            ...(password ? { password: password, password_hash: bcryptHash } : {})
+            ...(password ? { password_hash: bcryptHash } : {})
           }).eq('id', matchedUser.id);
         } else {
           const newId = Math.random().toString(36).substring(2, 10);
@@ -1654,7 +1666,6 @@ export const Employees = memo(function Employees({ employees, transactions, atte
             display_name: trimmedName,
             email: trimmedEmail,
             phone: trimmedPhone,
-            password: password || '',
             password_hash: bcryptHash || '',
             role: formData.role,
             employee_id: docId,

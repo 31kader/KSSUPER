@@ -8,6 +8,7 @@ import {
   CompanySettings 
 } from '../types';
 import { supabase } from '../supabase';
+import { convertKeysToSnake } from '../database';
 import { formatSafe } from '../lib/utils';
 import { fr } from 'date-fns/locale';
 import { Modal, Button, Card } from './ui';
@@ -66,7 +67,7 @@ export function CashManagement({
         initialCash: parseFloat(initialCash) || 0,
         status: 'open'
       };
-      const { error } = await supabase.from('shifts').insert(newShift);
+      const { error } = await supabase.from('shifts').insert(convertKeysToSnake(newShift));
       if (error) throw error;
       setIsOpeningModalOpen(false);
       setInitialCash('');
@@ -95,7 +96,7 @@ export function CashManagement({
         notes
       };
       
-      const { error } = await supabase.from('shifts').update(updatedShift).eq('id', activeShift.id);
+      const { error } = await supabase.from('shifts').update(convertKeysToSnake(updatedShift)).eq('id', activeShift.id);
       if (error) throw error;
 
       setIsClosingModalOpen(false);

@@ -82,14 +82,19 @@ export const Promotions = memo(function Promotions({ promotions, products, categ
     }
 
     const data = {
-      ...formData,
       name: trimmedName,
       code: formData.code?.trim().toUpperCase() || '',
+      type: formData.type,
       value: promoValue,
-      minPurchase: formData.minPurchase ? parseFloat(formData.minPurchase) : null,
-      buyQuantity: formData.buyQuantity ? parseInt(formData.buyQuantity) : null,
-      getQuantity: formData.getQuantity ? parseInt(formData.getQuantity) : null,
-      updatedAt: new Date().toISOString()
+      min_purchase: formData.minPurchase ? parseFloat(formData.minPurchase) : null,
+      buy_quantity: formData.buyQuantity ? parseInt(formData.buyQuantity) : null,
+      get_quantity: formData.getQuantity ? parseInt(formData.getQuantity) : null,
+      start_date: formData.startDate || null,
+      end_date: formData.endDate || null,
+      is_active: formData.isActive,
+      applicable_categories: formData.applicableCategories || [],
+      applicable_products: formData.applicableProducts || [],
+      updated_at: new Date().toISOString()
     };
 
     try {

@@ -19,7 +19,7 @@ function snakeToCamelCase(str: string): string {
   return str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
 }
 
-function convertKeysToSnake(obj: any): any {
+export function convertKeysToSnake(obj: any): any {
   if (obj === null || obj === undefined) return obj;
   if (Array.isArray(obj)) {
     return obj.map(convertKeysToSnake);
@@ -37,7 +37,7 @@ function convertKeysToSnake(obj: any): any {
   return obj;
 }
 
-function convertKeysToCamel(obj: any): any {
+export function convertKeysToCamel(obj: any): any {
   if (obj === null || obj === undefined) return obj;
   if (Array.isArray(obj)) {
     return obj.map(convertKeysToCamel);
@@ -76,7 +76,8 @@ const TABLE_COLUMNS: Record<string, string[]> = {
     'id', 'total', 'payment_method', 'delivery_method', 'timestamp', 'user_id', 
     'customer_id', 'customer_name', 'status', 'employee_id', 'employee_name', 
     'promotion_id', 'points_earned', 'discount_amount', 'points_discount', 
-    'balance_used', 'voucher_discount', 'is_wholesale', 'online_order_id', 'items'
+    'balance_used', 'voucher_discount', 'is_wholesale', 'online_order_id', 'items',
+    'audit_status', 'audit_note'
   ],
   employees: [
     'id', 'name', 'role', 'phone', 'email', 'hire_date', 'status', 'is_clocked_in', 
@@ -111,33 +112,37 @@ const TABLE_COLUMNS: Record<string, string[]> = {
     'delivery_days', 'payment_days', 'planning_notes', 'updated_at'
   ],
   users: [
-    'id', 'uid', 'email', 'display_name', 'password_hash', 'role', 'join_date'
+    'id', 'uid', 'email', 'display_name', 'password_hash', 'role', 'employee_id', 'join_date', 'updated_at'
   ],
   settings: [
     'id', 'name', 'logo_url', 'address', 'phone', 'email', 'tax_number', 'receipt_template', 'label_template', 
     'currency', 'tax_rate', 'loyalty_points_per_currency_unit', 'loyalty_point_value', 'footer_text', 
-    'accounting_format', 'site_locations', 'role_kpis', 'notifications', 'operational_costs', 'locking_period_days', 
+    'accounting_format', 'site_locations', 'role_kpis', 'role_permissions', 'notifications', 'operational_costs', 'locking_period_days', 
     'delivery_zones', 'paper_format', 'silent_printing', 'global_stock_alert_threshold', 'api_keys', 
     'available_taxes', 'display_price_ht', 'loyalty_tiers', 'enable_time_clock', 'session_timeout_minutes', 
     'audit_log_retention_days', 'brand_color', 'fast_mode_enabled', 'default_lead_time_days', 'loyalty_points_per_unit'
   ],
   promotions: [
-    'id', 'name', 'description', 'type', 'value', 'start_date', 'end_date', 'conditions', 'active'
+    'id', 'name', 'type', 'value', 'min_purchase', 'start_date', 'end_date', 'is_active', 'applicable_categories', 'code', 'buy_quantity', 'get_quantity', 'applicable_products', 'updated_at'
   ],
   returns: [
     'id', 'transaction_id', 'product_id', 'quantity', 'reason', 'condition', 'refund_amount', 'date', 'status', 'notes'
   ],
   online_orders: [
-    'id', 'customer_id', 'customer_name', 'items', 'total', 'status', 'shipping_address', 'payment_status', 'created_at'
+    'id', 'customer_id', 'customer_email', 'external_order_id',
+    'items', 'total', 'status', 'shipping_address', 'payment_status', 'payment_method', 
+    'source', 'delivery_method', 'pickup_time', 'synced_to_pos', 
+    'assigned_employee_id', 'assigned_employee_name', 'assigned_picker_id', 'assigned_picker_name',
+    'status_history', 'timestamp'
   ],
   purchases: [
     'id', 'supplier_id', 'items', 'total_amount', 'status', 'date', 'documents'
   ],
   purchase_orders: [
-    'id', 'supplier_id', 'items', 'total_amount', 'status', 'expected_date', 'notes', 'created_at'
+    'id', 'supplier_id', 'supplier_name', 'order_number', 'items', 'total_amount', 'total', 'status', 'expected_date', 'notes', 'created_at'
   ],
   stock_adjustments: [
-    'id', 'product_id', 'quantity_change', 'reason', 'user_id', 'date', 'cost_impact'
+    'id', 'product_id', 'product_name', 'old_quantity', 'new_quantity', 'adjustment', 'reason', 'timestamp', 'user_id', 'user_name', 'is_loss'
   ],
   supplier_payments: [
     'id', 'supplier_id', 'amount', 'method', 'date', 'reference', 'notes'
@@ -146,13 +151,13 @@ const TABLE_COLUMNS: Record<string, string[]> = {
     'id', 'date', 'auditor_id', 'status', 'discrepancies', 'notes', 'completed_at'
   ],
   audit_logs: [
-    'id', 'user_id', 'user_name', 'action', 'entity', 'module', 'details', 'severity', 'is_cancelled', 'cancelled_at', 'updated_at', 'timestamp'
+    'id', 'timestamp', 'user_id', 'user_name', 'action', 'module', 'details', 'severity', 'is_cancelled', 'cancelled_at', 'updated_at'
   ],
   supplier_syncs: [
     'id', 'supplier_id', 'last_sync', 'status', 'items_updated', 'errors'
   ],
   damaged_items: [
-    'id', 'product_id', 'quantity', 'date', 'reported_by', 'reason', 'status'
+    'id', 'product_id', 'product_name', 'quantity', 'date', 'reported_by', 'user_id', 'user_name', 'reason', 'cost_price', 'claim_status', 'status'
   ],
   advances: [
     'id', 'employee_id', 'amount', 'date', 'reason', 'status', 'approved_by', 'repayment_date'
@@ -230,7 +235,11 @@ function preparePayload(table: string, id: string, data: any) {
     }
 
     // 3. Format columns that PostgreSQL / Supabase expects as actual BOOLEANS
-    const booleanKeys = ['is_bundle', 'show_in_pos', 'is_app_user', 'is_clocked_in', 'sync_enabled', 'has_full_inventory_access', 'use_multi_expiry', 'auto_unpack'];
+    const booleanKeys = [
+      'is_bundle', 'show_in_pos', 'is_app_user', 'is_clocked_in', 'sync_enabled', 
+      'has_full_inventory_access', 'use_multi_expiry', 'auto_unpack', 'synced_to_pos',
+      'active', 'is_wholesale', 'pushed', 'is_cancelled'
+    ];
     if (booleanKeys.includes(key)) {
       return !!val;
     }
@@ -267,7 +276,11 @@ function preparePayload(table: string, id: string, data: any) {
     }
 
     // 6. Handle JSONB fields
-    const jsonKeys = ['bundle_items', 'quantity_discounts', 'usage_logs', 'items', 'alerts', 'favorite_items', 'usage_logs', 'batches'];
+    const jsonKeys = [
+      'bundle_items', 'quantity_discounts', 'usage_logs', 'items', 'alerts', 
+      'favorite_items', 'usage_logs', 'batches', 'status_history', 'conditions',
+      'documents', 'discrepancies', 'notifications', 'role_kpis', 'details'
+    ];
     if (jsonKeys.includes(key)) {
       if (typeof val === 'string') {
         try { return JSON.parse(val); } catch (_) { return []; }
@@ -320,6 +333,283 @@ async function saveStateToStorage() {
   }, 200);
 }
 
+// ----------------- Asynchronous Sync Queue (Batching & Deferred Offline-First) -----------------
+let pendingUpserts: Record<string, Record<string, any>> = {}; // table -> recordId -> value
+let pendingDeletes: Record<string, string[]> = {}; // table -> array of recordIds
+let syncQueueTimeout: any = null;
+let isSyncingQueue = false;
+
+// Load queued changes on startup
+async function loadPendingSyncQueue() {
+  try {
+    const upserts = await getIDB('nexus_pending_sync_upserts');
+    const deletes = await getIDB('nexus_pending_sync_deletes');
+    if (upserts) pendingUpserts = upserts;
+    if (deletes) pendingDeletes = deletes;
+    
+    if (hasPendingChanges()) {
+      scheduleQueueProcessing(2000);
+    }
+  } catch (e) {
+    console.warn('[Queue Sync] Failed to load pending sync queue', e);
+  }
+}
+
+function hasPendingChanges() {
+  const hasUpserts = Object.values(pendingUpserts).some(records => Object.keys(records).length > 0);
+  const hasDeletes = Object.values(pendingDeletes).some(ids => ids.length > 0);
+  return hasUpserts || hasDeletes;
+}
+
+async function savePendingSyncQueue() {
+  try {
+    await setIDB('nexus_pending_sync_upserts', pendingUpserts);
+    await setIDB('nexus_pending_sync_deletes', pendingDeletes);
+  } catch (e) {
+    console.warn('[Queue Sync] Failed to save pending sync queue', e);
+  }
+}
+
+function enqueueSync(table: string, id: string | null, value: any, isDelete = false) {
+  // Use normalizePath to get the correct table name for Supabase
+  const normalizedPath = normalizePath(table);
+  const mappedTable = normalizedPath === 'shifts' ? 'cash_shifts' : normalizedPath;
+  
+  if (!isSupabaseConfigured || !TABLE_COLUMNS[mappedTable]) return;
+
+  if (isDelete) {
+    if (id) {
+      if (pendingUpserts[mappedTable]) {
+        delete pendingUpserts[mappedTable][id];
+      }
+      if (!pendingDeletes[mappedTable]) {
+        pendingDeletes[mappedTable] = [];
+      }
+      if (!pendingDeletes[mappedTable].includes(id)) {
+        pendingDeletes[mappedTable].push(id);
+      }
+    } else {
+      pendingUpserts[mappedTable] = {};
+      pendingDeletes[mappedTable] = ['none_placeholder_delete_all'];
+    }
+  } else if (id) {
+    if (pendingDeletes[mappedTable]) {
+      pendingDeletes[mappedTable] = pendingDeletes[mappedTable].filter(x => x !== id);
+    }
+    if (!pendingUpserts[mappedTable]) {
+      pendingUpserts[mappedTable] = {};
+    }
+    pendingUpserts[mappedTable][id] = value;
+  }
+
+  savePendingSyncQueue();
+  scheduleQueueProcessing(1500);
+}
+
+function scheduleQueueProcessing(delayMs = 1500) {
+  if (syncQueueTimeout) clearTimeout(syncQueueTimeout);
+  syncQueueTimeout = setTimeout(processSyncQueue, delayMs);
+}
+
+let _isSyncActive = false;
+export function isBackgroundSyncActive() {
+  return _isSyncActive;
+}
+
+const syncStatusListeners = new Set<(active: boolean, pendingCount: number) => void>();
+export function onBackgroundSyncStatus(callback: (active: boolean, pendingCount: number) => void) {
+  syncStatusListeners.add(callback);
+  callback(_isSyncActive, getPendingCount());
+  return () => {
+    syncStatusListeners.delete(callback);
+  };
+}
+
+function getPendingCount() {
+  let count = 0;
+  for (const records of Object.values(pendingUpserts)) {
+    count += Object.keys(records).length;
+  }
+  for (const ids of Object.values(pendingDeletes)) {
+    count += ids.length;
+  }
+  return count;
+}
+
+function notifySyncStatus() {
+  const active = _isSyncActive;
+  const count = getPendingCount();
+  syncStatusListeners.forEach(cb => cb(active, count));
+}
+
+const TABLE_PROCESS_ORDER = ['categories', 'brands', 'products'];
+
+async function processSyncQueue() {
+  if (!isSupabaseConfigured || isSyncingQueue) return;
+  if (!hasPendingChanges()) return;
+
+  isSyncingQueue = true;
+  _isSyncActive = true;
+  notifySyncStatus();
+
+  console.log("[Queue Sync] Beginning asynchronous batch synchronization to Supabase...");
+
+  try {
+    const upsertsToProcess = { ...pendingUpserts };
+    const deletesToProcess = { ...pendingDeletes };
+
+    pendingUpserts = {};
+    pendingDeletes = {};
+    await savePendingSyncQueue();
+
+    // 1. Process deletes
+    for (const [mappedTable, ids] of Object.entries(deletesToProcess)) {
+      if (ids.length === 0 || missingTables.has(mappedTable)) continue;
+      try {
+        if (ids.includes('none_placeholder_delete_all')) {
+          const { error } = await supabase.from(mappedTable).delete().neq('id', 'none_placeholder_delete_all');
+          if (error) {
+            handleSupabaseError(mappedTable, 'Delete', error);
+            if (isRetryableError(error)) {
+              requeueDeletes(mappedTable, ids);
+            }
+          }
+        } else {
+          const chunkSize = 100;
+          for (let i = 0; i < ids.length; i += chunkSize) {
+            const chunk = ids.slice(i, i + chunkSize);
+            const { error } = await supabase.from(mappedTable).delete().in('id', chunk);
+            if (error) {
+              handleSupabaseError(mappedTable, 'Delete', error);
+              if (isRetryableError(error)) {
+                requeueDeletes(mappedTable, chunk);
+              }
+              if (!isRetryableError(error)) break; // Skip remaining chunks for this table
+            }
+          }
+        }
+      } catch (err) {
+        console.error(`[Queue Sync] Error running bulk deletes on ${mappedTable}:`, err);
+        requeueDeletes(mappedTable, ids);
+      }
+    }
+
+    // 2. Process upserts in specific order
+    const allTables = new Set(Object.keys(upsertsToProcess));
+    const orderedTables = [...TABLE_PROCESS_ORDER.filter(t => allTables.has(t)), ...Array.from(allTables).filter(t => !TABLE_PROCESS_ORDER.includes(t))];
+
+    for (const mappedTable of orderedTables) {
+      if (missingTables.has(mappedTable)) continue;
+      const records = upsertsToProcess[mappedTable];
+      if (!records || Object.keys(records).length === 0) continue;
+
+      try {
+        const payloads: any[] = [];
+        
+        if (mappedTable === 'products') {
+          const categoriesDict = dbState['categories'] || {};
+          let firstCatId = Object.keys(categoriesDict)[0] || 'uncategorized';
+          
+          for (const [id, value] of Object.entries(records)) {
+            let catId = value.category_id || value.categoryId;
+            if (!catId) {
+              value.category_id = firstCatId;
+              value.categoryId = firstCatId;
+              catId = firstCatId;
+            }
+            
+            const catObj = dbState['categories'] ? dbState['categories'][catId] : null;
+            if (catObj) {
+              const catPayload = preparePayload('categories', catId, catObj);
+              try {
+                const { error: catErr } = await supabase.from('categories').upsert(catPayload, { onConflict: 'id' });
+                if (catErr) throw catErr;
+              } catch (err) {
+                console.warn("[Queue Sync] Auto-upsert product category error:", err);
+              }
+            }
+
+            const brandId = value.brand_id || value.brandId;
+            if (brandId) {
+              const brandObj = dbState['brands'] ? dbState['brands'][brandId] : null;
+              if (brandObj) {
+                const brandPayload = preparePayload('brands', brandId, brandObj);
+                try {
+                  const { error: brandErr } = await supabase.from('brands').upsert(brandPayload, { onConflict: 'id' });
+                  if (brandErr) throw brandErr;
+                } catch (err) {
+                  console.warn("[Queue Sync] Auto-upsert product brand error:", err);
+                }
+
+                value.brand_id = null;
+                value.brandId = null;
+              }
+            }
+            
+            payloads.push(preparePayload('products', id, value));
+          }
+        } else {
+          for (const [id, value] of Object.entries(records)) {
+            payloads.push(preparePayload(mappedTable, id, value));
+          }
+        }
+
+        if (payloads.length > 0) {
+          const chunkSize = 150;
+          for (let i = 0; i < payloads.length; i += chunkSize) {
+            const chunk = payloads.slice(i, i + chunkSize);
+            const { error } = await supabase.from(mappedTable).upsert(chunk, { onConflict: 'id' });
+            if (error) {
+              handleSupabaseError(mappedTable, 'Upsert', error);
+              if (isRetryableError(error)) {
+                const failedIds = chunk.map(p => p.id);
+                const failedRecords: Record<string, any> = {};
+                for (const id of failedIds) {
+                  if (records[id]) failedRecords[id] = records[id];
+                }
+                requeueUpserts(mappedTable, failedRecords);
+              }
+              if (!isRetryableError(error)) break; // Skip remaining chunks for this table
+            }
+          }
+        }
+      } catch (err: any) {
+        console.error(`[Queue Sync] Error writing bulk upserts for ${mappedTable}:`, err);
+        requeueUpserts(mappedTable, records);
+      }
+    }
+
+    console.log("[Queue Sync] Batch sync cycle completed.");
+  } catch (err) {
+    console.error("[Queue Sync] Error in background sync:", err);
+  } finally {
+    isSyncingQueue = false;
+    _isSyncActive = false;
+    notifySyncStatus();
+    await savePendingSyncQueue();
+    
+    if (hasPendingChanges()) {
+      scheduleQueueProcessing(3000);
+    }
+  }
+}
+
+function requeueDeletes(table: string, ids: string[]) {
+  if (!pendingDeletes[table]) pendingDeletes[table] = [];
+  for (const id of ids) {
+    if (!pendingDeletes[table].includes(id)) {
+      pendingDeletes[table].push(id);
+    }
+  }
+}
+
+function requeueUpserts(table: string, records: Record<string, any>) {
+  if (!pendingUpserts[table]) pendingUpserts[table] = {};
+  for (const [id, val] of Object.entries(records)) {
+    pendingUpserts[table][id] = val;
+  }
+}
+
 // Load on startup - Asynchronous load from IndexedDB
 async function loadInitialState() {
   try {
@@ -338,6 +628,8 @@ async function loadInitialState() {
         Object.keys(dbState).forEach(triggerObservers);
       }
     }
+    // Also load any offline queued events
+    await loadPendingSyncQueue();
   } catch (e) {
     console.warn('[Supabase Emulator] Failed to parse local state cache', e);
   }
@@ -345,8 +637,33 @@ async function loadInitialState() {
 
 loadInitialState();
 
-function parsePath(path: string) {
+function normalizePath(path: string): string {
+  if (!path) return '';
   const clean = path.replace(/^\/+|\/+$/g, '');
+  const parts = clean.split('/');
+  let table = parts[0];
+  
+  if (table === 'onlineOrders' || table === 'online_orders') table = 'online_orders';
+  else if (table === 'stockAdjustments' || table === 'stock_adjustments') table = 'stock_adjustments';
+  else if (table === 'supplierPayments' || table === 'supplier_payments') table = 'supplier_payments';
+  else if (table === 'supplierSyncs' || table === 'supplier_syncs') table = 'supplier_syncs';
+  else if (table === 'damagedItems' || table === 'damaged_items') table = 'damaged_items';
+  else if (table === 'auditLogs' || table === 'audit_logs') table = 'audit_logs';
+  else if (table === 'invoicePatterns' || table === 'invoice_patterns') table = 'invoice_patterns';
+  else if (table === 'purchaseOrders' || table === 'purchase_orders') table = 'purchase_orders';
+  else if (table === 'promotions') table = 'promotions';
+  else if (table === 'settings') table = 'settings';
+  else if (table === 'users') table = 'users';
+  else if (table === 'employees') table = 'employees';
+  else if (table === 'customers') table = 'customers';
+  else if (table === 'shifts' || table === 'cash_shifts') table = 'cash_shifts';
+  
+  parts[0] = table;
+  return parts.join('/');
+}
+
+function parsePath(path: string) {
+  const clean = normalizePath(path);
   const parts = clean.split('/');
   const table = parts[0];
   const id = parts.slice(1).join('/');
@@ -418,9 +735,10 @@ function removeLocalValue(path: string) {
 const observers: Record<string, ((snapshot: any) => void)[]> = {};
 
 function triggerObservers(path: string) {
-  if (observers[path]) {
-    const val = getLocalValue(path);
-    observers[path].forEach(cb => {
+  const normPath = normalizePath(path);
+  if (observers[normPath]) {
+    const val = getLocalValue(normPath);
+    observers[normPath].forEach(cb => {
       try {
         cb({
           exists: () => val !== undefined && val !== null,
@@ -433,24 +751,43 @@ function triggerObservers(path: string) {
   }
 }
 
+// List of tables known to be missing in Supabase to avoid redundant fatal error retries
+const missingTables = new Set<string>();
+const lastErrorToasts: Record<string, number> = {};
+
 function handleSupabaseError(table: string, actionType: 'Upsert' | 'Delete' | 'Fallback', error: any) {
   if (!error) return;
   const message = error.message || '';
   const code = error.code || '';
+  const isMissingTable = message.includes("Could not find the table") || 
+                         code === '42P01' || 
+                         (message.includes("relation") && message.includes("does not exist")) || 
+                         message.includes("schema cache");
   
-  if (message.includes("Could not find the table") || code === '42P01' || (message.includes("relation") && message.includes("does not exist")) || message.includes("schema cache")) {
+  if (isMissingTable) {
+    missingTables.add(table);
     console.info(`[Supabase Sync Schema Info] Table "${table}" is not created in Supabase yet. Local storage emulator database is active for this table.`);
-    if (typeof window !== 'undefined') {
-      try {
-        toast.error(`La table "${table}" n'existe pas dans Supabase. Veuillez la créer via l'onglet Vérificateur de connexion.`);
-      } catch (e) {}
+    
+    // Throttle toasts for the same table to once every 30 seconds
+    const now = Date.now();
+    if (!lastErrorToasts[table] || now - lastErrorToasts[table] > 30000) {
+      lastErrorToasts[table] = now;
+      if (typeof window !== 'undefined') {
+        try {
+          toast.error(`La table "${table}" n'existe pas dans Supabase. Veuillez la créer via l'onglet Vérificateur de connexion.`);
+        } catch (e) {}
+      }
     }
   } else if (message.includes("violates row-level security policy") || code === '42501' || message.includes("row-level security")) {
     console.info(`[Supabase RLS Policy Info] Table "${table}" relies on Row-Level Security policies. The current session has local persistence enabled as fallback.`);
-    if (typeof window !== 'undefined') {
-      try {
-        toast.warning(`[Supabase RLS] L'enregistrement sur "${table}" a échoué car le Row Level Security (RLS) bloque l'écriture. Désactivez RLS ou ajoutez une règle d'accès public.`);
-      } catch (e) {}
+    const now = Date.now();
+    if (!lastErrorToasts[table + '_rls'] || now - lastErrorToasts[table + '_rls'] > 30000) {
+      lastErrorToasts[table + '_rls'] = now;
+      if (typeof window !== 'undefined') {
+        try {
+          toast.warning(`[Supabase RLS] L'enregistrement sur "${table}" a échoué car le Row Level Security (RLS) bloque l'écriture. Désactivez RLS ou ajoutez une règle d'accès public.`);
+        } catch (e) {}
+      }
     }
   } else {
     console.warn(`[Supabase ${actionType} Issue] ${table}: ${message}`, error.details || '');
@@ -460,6 +797,20 @@ function handleSupabaseError(table: string, actionType: 'Upsert' | 'Delete' | 'F
       } catch (e) {}
     }
   }
+}
+
+function isRetryableError(error: any): boolean {
+  if (!error) return false;
+  const code = error.code || '';
+  const message = error.message || '';
+  
+  // 42P01: undefined_table
+  // 42501: insufficient_privilege (RLS)
+  if (code === '42P01' || code === '42501' || message.includes("Could not find the table") || message.includes("row-level security")) {
+    return false;
+  }
+  
+  return true;
 }
 
 // Persists local change and updates Supabase if configured
@@ -473,99 +824,17 @@ function persistAndTrigger(table: string, id: string | null, value: any, isDelet
     triggerObservers(`${table}/${id}`);
   }
   
-  // Realtime Supabase Persist write
-  const mappedTable = table === 'shifts' ? 'cash_shifts' : table;
-  if (isSupabaseConfigured && TABLE_COLUMNS[mappedTable]) {
-    if (isDelete) {
-      if (id) {
-        supabase.from(mappedTable).delete().eq('id', id).then(({ error }) => {
-          if (error) handleSupabaseError(mappedTable, 'Delete', error);
-        });
-      } else {
-        // En cas de suppression complète de la table locale (ex: suppression massive de tous les produits)
-        supabase.from(mappedTable).delete().neq('id', 'none_placeholder_delete_all').then(({ error }) => {
-          if (error) handleSupabaseError(mappedTable, 'Delete', error);
-        });
-      }
-    } else if (id) {
-      const payload = preparePayload(mappedTable, id, value);
-      
-      if (mappedTable === 'products') {
-        const runProductUpsert = async () => {
-          try {
-            // Ensure category exists
-            let catId = payload.category_id;
-            if (!catId) {
-              const categoriesDict = dbState['categories'] || {};
-              let firstCatId = Object.keys(categoriesDict)[0];
-              if (!firstCatId) {
-                firstCatId = 'uncategorized';
-                if (!dbState['categories']) dbState['categories'] = {};
-                dbState['categories'][firstCatId] = {
-                  id: firstCatId,
-                  name: 'Sans catégorie',
-                  level: 1
-                };
-                saveStateToStorage();
-                triggerObservers('categories');
-                triggerObservers(`categories/${firstCatId}`);
-              }
-              catId = firstCatId;
-            }
-
-            // Sync category to be absolutely sure
-            const catObj = dbState['categories'] ? dbState['categories'][catId] : null;
-            if (catObj) {
-              const catPayload = preparePayload('categories', catId, catObj);
-              await supabase.from('categories').upsert(catPayload, { onConflict: 'id' }).then(({ error: catErr }) => {
-                if (catErr) handleSupabaseError('categories', 'Fallback', catErr);
-              });
-            }
-            payload.category_id = catId;
-
-            // Ensure brand exists if provided
-            const brandId = payload.brand_id;
-            if (brandId) {
-              const brandObj = dbState['brands'] ? dbState['brands'][brandId] : null;
-              if (brandObj) {
-                const brandPayload = preparePayload('brands', brandId, brandObj);
-                await supabase.from('brands').upsert(brandPayload, { onConflict: 'id' }).then(({ error: brandErr }) => {
-                  if (brandErr) handleSupabaseError('brands', 'Fallback', brandErr);
-                });
-              } else {
-                // Brand ID was specified but doesn't exist in local brands state, clear to prevent fkey issues
-                payload.brand_id = null;
-              }
-            }
-
-            // Now upsert the product
-            const { error: prodErr } = await supabase.from('products').upsert(payload, { onConflict: 'id' });
-            if (prodErr) {
-              handleSupabaseError('products', 'Upsert', prodErr);
-            }
-          } catch (err: any) {
-            console.error("Error persisting product to Supabase:", err);
-          }
-        };
-        
-        runProductUpsert();
-        return;
-      }
-      
-      supabase.from(mappedTable).upsert(payload, { onConflict: 'id' }).then(({ error }) => {
-        if (error) handleSupabaseError(mappedTable, 'Upsert', error);
-      });
-    }
-  }
+  // Realtime Supabase Persist write (queued asynchronously & batched)
+  enqueueSync(table, id, value, isDelete);
 }
 
-// ----------------- Supabase Realtime "V8 Turbo" Sync -----------------
+// ----------------- Supabase Realtime Sync Engine -----------------
 let isTurboSubscriptionActive = false;
 
 export function enableTurboSync() {
   if (!isSupabaseConfigured || isTurboSubscriptionActive) return;
   
-  console.log("[V8 Turbo Mode] Activating Realtime synchronization across all tables...");
+  console.log("[Supabase Realtime] Activating synchronization across all tables...");
   
   const uniqueMappedTables = Array.from(new Set(
     Object.keys(TABLE_COLUMNS).map(table => table === 'shifts' ? 'cash_shifts' : table)
@@ -575,7 +844,7 @@ export function enableTurboSync() {
     supabase
       .channel(`public:${mappedTable}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: mappedTable }, (payload) => {
-        console.log(`[V8 Turbo] Realtime ${payload.eventType} on mapped table ${mappedTable}:`, payload.new || payload.old);
+        console.log(`[Supabase Realtime] Event ${payload.eventType} on table ${mappedTable}:`, payload.new || payload.old);
         
         // Find which tables in dbState correspond to this mappedTable
         const targetTables = Object.keys(TABLE_COLUMNS).filter(table => {
@@ -592,12 +861,30 @@ export function enableTurboSync() {
               triggerObservers(`${table}/${oldData.id}`);
             }
           } else {
-            const newData = convertKeysToCamel(payload.new);
+            const row = payload.new;
+            // Parse known JSON fields if they are strings
+            const jsonFields = ['items', 'status_history', 'metadata', 'details', 'documents', 'bundle_items', 'quantity_discounts', 'usage_logs', 'batches', 'alerts', 'favorite_items', 'conditions', 'discrepancies', 'notifications', 'role_kpis'];
+            jsonFields.forEach(field => {
+              if (row[field] && typeof row[field] === 'string') {
+                try { row[field] = JSON.parse(row[field]); } catch (e) {}
+              }
+            });
+
+            const newData = convertKeysToCamel(row);
             if (newData.id) {
+              const id = String(newData.id);
+              newData.id = id;
+              
+              // Fallback for online orders
+              if (table === 'online_orders' || table === 'onlineOrders') {
+                if (!newData.timestamp) newData.timestamp = (row.created_at || new Date().toISOString());
+                if (!newData.externalOrderId) newData.externalOrderId = (row.external_order_id || id.slice(0, 8));
+              }
+
               if (!dbState[table]) dbState[table] = {};
-              dbState[table][newData.id] = newData;
+              dbState[table][id] = newData;
               triggerObservers(table);
-              triggerObservers(`${table}/${newData.id}`);
+              triggerObservers(`${table}/${id}`);
             }
           }
         });
@@ -647,88 +934,113 @@ export async function initAndSyncSupabase() {
   enableTurboSync();
   
   const tables = Object.keys(TABLE_COLUMNS);
-  for (let i = 0; i < tables.length; i++) {
-    const table = tables[i];
-    syncStatus.currentTable = table;
-    triggerSyncUpdate();
-    try {
-      const mappedTable = table === 'shifts' ? 'cash_shifts' : table;
-      let allData: any[] = [];
-      let fromIdx = 0;
-      const pageSize = 1000;
-      let hasMore = true;
-      let fetchError: any = null;
+  const CHUNK_SIZE = 5; // Fetch 5 tables at a time to avoid rate limits while being fast
+  
+  for (let i = 0; i < tables.length; i += CHUNK_SIZE) {
+    const chunk = tables.slice(i, i + CHUNK_SIZE);
+    
+    await Promise.all(chunk.map(async (table) => {
+      syncStatus.currentTable = table;
+      triggerSyncUpdate();
+      
+      try {
+        const mappedTable = table === 'shifts' ? 'cash_shifts' : table;
+        
+        if (missingTables.has(mappedTable)) {
+          syncStatus.completedTables++;
+          return;
+        }
 
-      while (hasMore) {
-        const toIdx = fromIdx + pageSize - 1;
-        try {
-          // Optimisation: Utilisation de jointures pour charger les données liées
-          // Comme suggéré (p.ex: transactions avec clients) pour éviter les requêtes N+1
-          let selectStr = table === 'transactions' ? '*, clients(*)' : '*';
-          
-          let response = await supabase
-            .from(mappedTable)
-            .select(selectStr)
-            .range(fromIdx, toIdx);
+        let allData: any[] = [];
+        let fromIdx = 0;
+        const pageSize = 200; // Smaller page size to avoid statement timeouts on large tables
+        let hasMore = true;
+        let fetchError: any = null;
 
-          if (response.error && table === 'transactions' && (response.error.code === 'PGRST200' || response.error.message?.includes('relationship') || response.error.message?.includes('client'))) {
-            console.info(`[Supabase Sync Fallback] Retrying table "${mappedTable}" select with '*' because client relationship is missing in database schema.`);
-            selectStr = '*';
-            response = await supabase
+        while (hasMore) {
+          const toIdx = fromIdx + pageSize - 1;
+          try {
+            // Optimisation: only fetch necessary columns as defined in TABLE_COLUMNS
+            let selectStr = table === 'transactions' ? '*, clients(*)' : (TABLE_COLUMNS[table] ? TABLE_COLUMNS[table].join(',') : '*');
+            
+            let response = await supabase
               .from(mappedTable)
               .select(selectStr)
               .range(fromIdx, toIdx);
-          }
 
-          const { data, error } = response;
-
-          if (error) {
-            console.warn(`[Supabase Sync Warning] Error reading table "${mappedTable}" at page ${fromIdx}-${toIdx}:`, error);
-            fetchError = error;
-            hasMore = false;
-          } else if (data) {
-            allData = allData.concat(data);
-            if (data.length < pageSize) {
-              hasMore = false;
-            } else {
-              fromIdx += pageSize;
-              // Update progress within a large table if needed, but simple counter is usually enough
+            if (response.error && table === 'transactions' && (response.error.code === 'PGRST200' || response.error.message?.includes('relationship'))) {
+              selectStr = '*';
+              response = await supabase
+                .from(mappedTable)
+                .select(selectStr)
+                .range(fromIdx, toIdx);
             }
-          } else {
+
+            const { data, error } = response;
+
+            if (error) {
+              fetchError = error;
+              hasMore = false;
+            } else if (data) {
+              allData = allData.concat(data);
+              if (data.length < pageSize) {
+                hasMore = false;
+              } else {
+                fromIdx += pageSize;
+              }
+            } else {
+              hasMore = false;
+            }
+          } catch (e: any) {
+            fetchError = e;
             hasMore = false;
           }
-        } catch (e: any) {
-          console.warn(`[Supabase Sync Warning] Failed to fetch page for "${mappedTable}" at ${fromIdx}-${toIdx}:`, e?.message || e);
-          fetchError = e;
-          hasMore = false;
         }
-      }
 
-      if (fetchError && allData.length === 0) {
-        // Only report if we got no data at all
-        if (fetchError.message?.includes("Could not find the table") || fetchError.code === '42P01') {
-          console.info(`[Supabase Sync Schema Info] Table "${mappedTable}" is not created in Supabase yet. Local storage emulator database is active for this table.`);
+        if (fetchError && allData.length === 0) {
+          if (fetchError.message?.includes("Could not find the table") || fetchError.code === '42P01') {
+            missingTables.add(mappedTable);
+          } else {
+            console.warn(`[Supabase Sync Warning] Error reading table "${mappedTable}":`, fetchError.message || fetchError);
+          }
         } else {
-          console.warn(`[Supabase Sync Warning] Error reading table "${mappedTable}":`, fetchError.message || fetchError);
+           if (!dbState[table]) dbState[table] = {};
+           
+           allData.forEach((row: any) => {
+             const jsonFields = ['items', 'status_history', 'metadata', 'details', 'documents', 'bundle_items', 'quantity_discounts', 'usage_logs', 'batches', 'alerts', 'favorite_items', 'conditions', 'discrepancies', 'notifications', 'role_kpis'];
+             jsonFields.forEach(field => {
+               if (row[field] && typeof row[field] === 'string') {
+                 try { row[field] = JSON.parse(row[field]); } catch (e) {}
+               }
+             });
+
+             const camelRow = convertKeysToCamel(row);
+             if (camelRow.id) {
+                const id = String(camelRow.id);
+                camelRow.id = id;
+
+                if (table === 'online_orders' || table === 'onlineOrders') {
+                  if (!camelRow.timestamp) camelRow.timestamp = (row.created_at || new Date().toISOString());
+                  if (!camelRow.externalOrderId) camelRow.externalOrderId = (row.external_order_id || id.slice(0, 8));
+                }
+
+                dbState[table][id] = {
+                  ...(dbState[table][id] || {}),
+                  ...camelRow
+                };
+             }
+           });
+           
+           triggerObservers(table);
         }
-      } else {
-         // Remplacement complet par les données fraîches de Supabase pour propager les suppressions
-         const cloudData: Record<string, any> = {};
-         allData.forEach((row: any) => {
-           const camelRow = convertKeysToCamel(row);
-           if (camelRow.id) {
-              cloudData[camelRow.id] = camelRow;
-           }
-         });
-         dbState[table] = cloudData;
-         triggerObservers(table);
+      } catch (e: any) {
+        console.warn(`[Supabase Prefetch Fallback] Could not pull table ${table}:`, e?.message || e);
       }
-    } catch (e: any) {
-      console.warn(`[Supabase Prefetch Fallback] Could not pull table ${table}:`, e?.message || e);
-    }
-    syncStatus.completedTables++;
-    syncStatus.progress = Math.round((syncStatus.completedTables / syncStatus.totalTables) * 100);
-    triggerSyncUpdate();
+      
+      syncStatus.completedTables++;
+      syncStatus.progress = Math.round((syncStatus.completedTables / syncStatus.totalTables) * 100);
+      triggerSyncUpdate();
+    }));
   }
   syncStatus.active = false;
   syncStatus.progress = 100;
@@ -959,7 +1271,8 @@ export async function set(refObj: any, value: any) {
 }
 
 export async function update(refObj: any, value: any) {
-  const basePath = refObj.path || '';
+  const rawPath = refObj.path || '';
+  const basePath = normalizePath(rawPath);
   const updates: Record<string, any> = {};
   
   if (value && typeof value === 'object') {
@@ -1052,113 +1365,17 @@ export async function update(refObj: any, value: any) {
     triggerObservers(table);
   }
 
-  // 3. Batch upserts to Supabase to bypass the "connection storm" and too-many-requests limits
+  // 3. Queue all updates into the async background sync queue
   for (const [table, items] of Object.entries(supabaseUpserts)) {
-    const mappedTable = table === 'shifts' ? 'cash_shifts' : table;
-    if (isSupabaseConfigured && TABLE_COLUMNS[mappedTable]) {
-      const payloads: any[] = [];
-      
-      if (mappedTable === 'products') {
-        const categoriesDict = dbState['categories'] || {};
-        let firstCatId = Object.keys(categoriesDict)[0];
-        if (!firstCatId) {
-          firstCatId = 'uncategorized';
-          if (!dbState['categories']) dbState['categories'] = {};
-          dbState['categories'][firstCatId] = {
-            id: firstCatId,
-            name: 'Sans catégorie',
-            level: 1
-          };
-          saveStateToStorage();
-          triggerObservers('categories');
-          triggerObservers(`categories/${firstCatId}`);
-        }
-
-        // 1. Gather all categories used in the products being synced
-        const categoriesToSync = new Set<string>();
-        for (const item of items) {
-          let catId = item.value.category_id || item.value.categoryId;
-          if (!catId) {
-            item.value.category_id = firstCatId;
-            item.value.categoryId = firstCatId;
-            catId = firstCatId;
-          }
-          categoriesToSync.add(catId);
-        }
-
-        // 2. Sync used categories first
-        for (const catId of categoriesToSync) {
-          const catObj = dbState['categories'] ? dbState['categories'][catId] : null;
-          if (catObj) {
-            const catPayload = preparePayload('categories', catId, catObj);
-            await supabase.from('categories').upsert(catPayload, { onConflict: 'id' }).then(({ error }) => {
-              if (error) handleSupabaseError('categories', 'Fallback', error);
-            });
-          } else {
-            // Category has value but doesn't exist in local categories state, fallback to firstCatId
-            for (const item of items) {
-              const itemCat = item.value.category_id || item.value.categoryId;
-              if (itemCat === catId) {
-                item.value.category_id = firstCatId;
-                item.value.categoryId = firstCatId;
-              }
-            }
-            const defaultCatObj = dbState['categories'][firstCatId];
-            if (defaultCatObj) {
-              const catPayload = preparePayload('categories', firstCatId, defaultCatObj);
-              await supabase.from('categories').upsert(catPayload, { onConflict: 'id' }).then(({ error }) => {
-                if (error) handleSupabaseError('categories', 'Fallback', error);
-              });
-            }
-          }
-        }
-
-        // 3. Sync used brands first
-        for (const item of items) {
-          const brandId = item.value.brand_id || item.value.brandId;
-          if (brandId) {
-            const brandObj = dbState['brands'] ? dbState['brands'][brandId] : null;
-            if (brandObj) {
-              const brandPayload = preparePayload('brands', brandId, brandObj);
-              await supabase.from('brands').upsert(brandPayload, { onConflict: 'id' }).then(({ error }) => {
-                if (error) handleSupabaseError('brands', 'Fallback', error);
-              });
-            } else {
-              // Brand doesn't exist, clear to avoid foreign key violation
-              item.value.brand_id = null;
-              item.value.brandId = null;
-            }
-          }
-        }
-      }
-
-      for (const item of items) {
-        payloads.push(preparePayload(mappedTable, item.id, item.value));
-      }
-
-      if (payloads.length > 0) {
-        const chunkSize = 150;
-        for (let j = 0; j < payloads.length; j += chunkSize) {
-          const chunk = payloads.slice(j, j + chunkSize);
-          supabase.from(mappedTable).upsert(chunk, { onConflict: 'id' }).then(({ error }) => {
-            if (error) handleSupabaseError(mappedTable, 'Upsert', error);
-          });
-        }
-      }
+    for (const item of items) {
+      enqueueSync(table, item.id, item.value, false);
     }
   }
 
-  // 4. Batch deletes to Supabase
+  // 4. Queue all deletes into the async background sync queue
   for (const [table, ids] of Object.entries(tablesDeleted)) {
-    const mappedTable = table === 'shifts' ? 'cash_shifts' : table;
-    if (isSupabaseConfigured && TABLE_COLUMNS[mappedTable] && ids.length > 0) {
-      const chunkSize = 150;
-      for (let j = 0; j < ids.length; j += chunkSize) {
-        const chunk = ids.slice(j, j + chunkSize);
-        supabase.from(mappedTable).delete().in('id', chunk).then(({ error }) => {
-          if (error) handleSupabaseError(mappedTable, 'Delete', error);
-        });
-      }
+    for (const id of ids) {
+      enqueueSync(table, id, null, true);
     }
   }
 }
@@ -1176,7 +1393,8 @@ export async function remove(refObj: any) {
 }
 
 export function onValue(refObj: any, callback: (snapshot: any) => void, cancelCallback?: (error: any) => void) {
-  const path = refObj.path;
+  const rawPath = refObj.path || '';
+  const path = normalizePath(rawPath);
   if (!observers[path]) {
     observers[path] = [];
   }

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { QRCodeCanvas } from 'qrcode.react';
 import { supabase } from '../supabase';
+import { convertKeysToSnake, convertKeysToCamel } from '../database';
 import { cn, generateUniqueId } from '../lib/utils';
 import { motion } from 'motion/react';
 import { Search, History, CheckCircle2, X, LayoutGrid, Package, MapPin, Truck, ShoppingBag, Phone, MessageCircle, Navigation, Eye, Trash2, Printer, Edit, RefreshCw, Scan, RotateCcw, ShieldCheck, TrendingDown } from 'lucide-react';
@@ -48,7 +49,7 @@ export function VoucherManager({ customers = [] }: { customers?: any[] }) {
         const { data, error } = await supabase.from('vouchers').select('*');
         if (error) throw error;
         if (data) {
-          setVouchers(data as Voucher[]);
+          setVouchers(convertKeysToCamel(data) as Voucher[]);
         }
       } catch (err) {
         console.warn("Supabase error in VoucherManager:", err);
@@ -84,7 +85,11 @@ export function VoucherManager({ customers = [] }: { customers?: any[] }) {
         voucherData.customerName = customer?.name || 'Inconnu';
       }
 
-      const { error } = await supabase.from('vouchers').insert(voucherData);
+      const snakeData = convertKeysToSnake(voucherData);
+      // Remove timestamps if they might cause errors
+      delete snakeData.created_at;
+
+      const { error } = await supabase.from('vouchers').insert(snakeData);
       if (error) throw error;
       setNewVoucher(voucherData);
       

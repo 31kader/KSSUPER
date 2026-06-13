@@ -352,9 +352,9 @@ export function Inventory({ products, categories, brands, stockAdjustments, user
       const categoryIdToSet = bulkUpdateCategory ? (bulkSubCatId || bulkParentCatId || null) : undefined;
       const updatedAt = new Date().toISOString();
 
-      const updateData: any = { updatedAt };
-      if (brandIdToSet !== undefined) updateData.brandId = brandIdToSet;
-      if (categoryIdToSet !== undefined) updateData.categoryId = categoryIdToSet;
+      const updateData: any = { updated_at: updatedAt };
+      if (brandIdToSet !== undefined) updateData.brand_id = brandIdToSet;
+      if (categoryIdToSet !== undefined) updateData.category_id = categoryIdToSet;
 
       const { error } = await supabase
         .from('products')

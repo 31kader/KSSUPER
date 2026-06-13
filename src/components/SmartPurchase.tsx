@@ -13,6 +13,7 @@ import {
 import { 
   cn, generateUniqueId, formatProductStock, logAction, formatSafe
 } from '../lib/utils';
+import { convertKeysToSnake } from '../database';
 import { supabase } from '../supabase';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -560,8 +561,12 @@ export function SmartPurchase({
       // Optimistic cache update event
       window.dispatchEvent(new CustomEvent('product-cache-update', { detail: newProductData }));
 
+      const snakeProduct = convertKeysToSnake(newProductData);
+      delete (snakeProduct as any).updated_at;
+      delete (snakeProduct as any).created_at;
+
       // Save to Supabase
-      const { error } = await supabase.from('products').insert(newProductData);
+      const { error } = await supabase.from('products').insert(snakeProduct);
       if (error) throw error;
 
       logAction(
@@ -1278,12 +1283,11 @@ export function SmartPurchase({
         name: trimmedName,
         phone: (quickSupplierData.phone || '').trim(),
         email: (quickSupplierData.email || '').trim().toLowerCase(),
-        balance: 0,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
+        balance: 0
       };
 
-      const { error } = await supabase.from('suppliers').insert(newSupplier);
+      const snakeSupplier = convertKeysToSnake(newSupplier);
+      const { error } = await supabase.from('suppliers').insert(snakeSupplier);
       if (error) throw error;
       setSelectedSupplierId(supplierId);
       setIsQuickSupplierModalOpen(false);
@@ -1406,24 +1410,24 @@ export function SmartPurchase({
       const patternData = {
         supplierName,
         systemSupplierId: selectedSupplierId || '',
-        itemMappings: newMappings,
-        updatedAt: new Date().toISOString()
+        itemMappings: newMappings
       };
+
+      const snakePattern = convertKeysToSnake(patternData);
 
       if (existingPattern) {
         const { error } = await supabase
-          .from('invoicePatterns')
-          .update(patternData)
+          .from('invoice_patterns')
+          .update(snakePattern)
           .eq('id', existingPattern.id);
         if (error) throw error;
       } else {
         const newPatternId = Math.random().toString(36).substring(2, 11);
         const { error } = await supabase
-          .from('invoicePatterns')
+          .from('invoice_patterns')
           .insert({
-            ...patternData,
-            id: newPatternId,
-            createdAt: new Date().toISOString()
+            ...snakePattern,
+            id: newPatternId
           });
         if (error) throw error;
       }
@@ -1449,22 +1453,27 @@ export function SmartPurchase({
         paidAmount: paidAmount || 0,
         globalDiscount: globalDiscount || 0,
         globalTax: globalTax || 0,
-        updatedAt: new Date().toISOString()
       };
 
       let purchaseId = editingPurchaseId;
       let oldPurchase: Purchase | undefined;
+      
+      const snakePurchase: any = convertKeysToSnake(purchaseData);
+      // Map total to total_amount for purchases table in database.ts
+      snakePurchase.total_amount = snakePurchase.total;
+      delete snakePurchase.total;
+
       if (editingPurchaseId) {
          oldPurchase = purchases.find(p => p.id === editingPurchaseId);
          const { error } = await supabase
            .from('purchases')
-           .update(purchaseData)
+           .update(snakePurchase)
            .eq('id', editingPurchaseId);
          if (error) throw error;
       } else {
          purchaseId = Math.random().toString(36).substring(2, 11);
-         purchaseData.id = purchaseId;
-         const { error } = await supabase.from('purchases').insert(purchaseData);
+         snakePurchase.id = purchaseId;
+         const { error } = await supabase.from('purchases').insert(snakePurchase);
          if (error) throw error;
       }
 
@@ -1484,12 +1493,12 @@ export function SmartPurchase({
       if (debtDelta !== 0) {
         const supplier = suppliers.find(s => s.id === selectedSupplierId);
         if (supplier) {
+          const snakeUpdates = convertKeysToSnake({
+            balance: (supplier.balance || 0) + debtDelta
+          });
           const { error } = await supabase
             .from('suppliers')
-            .update({
-              balance: (supplier.balance || 0) + debtDelta,
-              updatedAt: new Date().toISOString()
-            })
+            .update(snakeUpdates)
             .eq('id', supplier.id);
           if (error) throw error;
         }
@@ -1547,9 +1556,12 @@ export function SmartPurchase({
                }
             }
             if (productId && productId !== 'undefined') {
+              const snakeUpdates = convertKeysToSnake(updates);
+              delete (snakeUpdates as any).updated_at;
+              delete (snakeUpdates as any).created_at;
               const { error } = await supabase
                 .from('products')
-                .update(updates)
+                .update(snakeUpdates)
                 .eq('id', productId);
               if (error) throw error;
             }
@@ -1588,14 +1600,15 @@ export function SmartPurchase({
         note: data.note
       };
       
-      const { error: payError } = await supabase.from('supplierPayments').insert(payment);
+      const snakePayment = convertKeysToSnake(payment);
+      
+      const { error: payError } = await supabase.from('supplier_payments').insert(snakePayment);
       if (payError) throw payError;
 
       const { error: suppError } = await supabase
         .from('suppliers')
         .update({
-          balance: (supplier.balance || 0) - data.amount,
-          updatedAt: new Date().toISOString()
+          balance: (supplier.balance || 0) - data.amount
         })
         .eq('id', data.supplierId);
       if (suppError) throw suppError;
@@ -1613,7 +1626,7 @@ export function SmartPurchase({
   const handleReceiveOrder = async (order: PurchaseOrder) => {
     setIsProcessing(true);
     try {
-      const purchaseData: Omit<Purchase, 'id'> = {
+      const purchaseData: any = {
         supplierId: order.supplierId || '',
         supplierName: suppliers.find(s => s.id === order.supplierId)?.name || 'Unknown',
         items: order.items.map(item => ({
@@ -1622,20 +1635,17 @@ export function SmartPurchase({
           quantity: item.quantity || 0,
           costPrice: item.price || 0
         })),
-        total: order.total || 0,
+        total_amount: order.total || 0,
         invoiceNumber: order.orderNumber || '',
         date: new Date().toISOString(),
         status: 'completed',
         paymentStatus: 'unpaid',
-        paidAmount: 0,
-        updatedAt: new Date().toISOString()
+        paidAmount: 0
       };
 
       const newPurchaseId = Math.random().toString(36).substring(2, 11);
-      const { error: purError } = await supabase.from('purchases').insert({
-        ...purchaseData,
-        id: newPurchaseId
-      });
+      const snakePurchase = convertKeysToSnake({ ...purchaseData, id: newPurchaseId });
+      const { error: purError } = await supabase.from('purchases').insert(snakePurchase);
       if (purError) throw purError;
 
       for (const item of order.items) {
@@ -1647,33 +1657,33 @@ export function SmartPurchase({
                 if (bi.productId && bi.productId !== 'undefined') {
                   const targetProd = products.find(p => p.id === bi.productId);
                   if (targetProd) {
+                    const snakeUpdates = convertKeysToSnake({
+                      stock: (targetProd.stock || 0) + ((item.quantity || 0) * bi.quantity)
+                    });
                     const { error } = await supabase
                       .from('products')
-                      .update({
-                        stock: (targetProd.stock || 0) + ((item.quantity || 0) * bi.quantity),
-                        updatedAt: new Date().toISOString()
-                      })
+                      .update(snakeUpdates)
                       .eq('id', bi.productId);
                     if (error) throw error;
                   }
                 }
               }
+              const snakeUpdatesBundle = convertKeysToSnake({
+                costPrice: item.price || 0
+              });
               const { error } = await supabase
                 .from('products')
-                .update({
-                  costPrice: item.price || 0,
-                  updatedAt: new Date().toISOString()
-                })
+                .update(snakeUpdatesBundle)
                 .eq('id', item.productId);
               if (error) throw error;
             } else {
+              const snakeUpdatesSingle = convertKeysToSnake({
+                stock: (product.stock || 0) + (item.quantity || 0),
+                costPrice: item.price || 0
+              });
               const { error } = await supabase
                 .from('products')
-                .update({
-                  stock: (product.stock || 0) + (item.quantity || 0),
-                  costPrice: item.price || 0,
-                  updatedAt: new Date().toISOString()
-                })
+                .update(snakeUpdatesSingle)
                 .eq('id', item.productId);
               if (error) throw error;
             }
@@ -1682,10 +1692,9 @@ export function SmartPurchase({
       }
 
       const { error: poError } = await supabase
-        .from('purchaseOrders')
+        .from('purchase_orders')
         .update({
-          status: 'received',
-          updatedAt: new Date().toISOString()
+          status: 'received'
         })
         .eq('id', order.id);
       if (poError) throw poError;

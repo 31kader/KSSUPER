@@ -2,6 +2,7 @@ import React, { useState, memo } from 'react';
 import { Plus, Search, Package, X } from 'lucide-react';
 import { InventoryAudit as InventoryAuditType, Product, CompanySettings } from '../types';
 import { supabase } from '../supabase';
+import { convertKeysToSnake } from '../database';
 import { formatSafe, cn } from '../lib/utils';
 import { Button, Card, Modal, ConfirmDialog } from './ui';
 
@@ -28,7 +29,7 @@ export const InventoryAudit = memo(function InventoryAudit({ audits, products, u
       items: []
     };
     try {
-      const { error } = await supabase.from('audits').insert(newAudit);
+      const { error } = await supabase.from('audits').insert(convertKeysToSnake(newAudit));
       if (error) throw error;
       setActiveAudit(newAudit as InventoryAuditType);
       setAuditItems([]);
@@ -79,12 +80,12 @@ export const InventoryAudit = memo(function InventoryAudit({ audits, products, u
 
       const { error: auditError } = await supabase
         .from('audits')
-        .update({
+        .update(convertKeysToSnake({
           status: 'completed',
           endDate: new Date().toISOString(),
           items: auditItems,
           totalDiscrepancyValue
-        })
+        }))
         .eq('id', activeAudit.id);
       if (auditError) throw auditError;
 
@@ -95,12 +96,12 @@ export const InventoryAudit = memo(function InventoryAudit({ audits, products, u
             .from('products')
             .update({
               stock: item.actualStock,
-              updatedAt: new Date().toISOString()
+              updated_at: new Date().toISOString()
             })
             .eq('id', item.productId);
           if (prodError) throw prodError;
 
-          const { error: adjError } = await supabase.from('stockAdjustments').insert({
+          const { error: adjError } = await supabase.from('stock_adjustments').insert(convertKeysToSnake({
             id: Math.random().toString(36).substring(2, 10),
             productId: item.productId,
             productName: item.productName,
@@ -110,7 +111,7 @@ export const InventoryAudit = memo(function InventoryAudit({ audits, products, u
             reason: "Audit d'inventaire",
             timestamp: new Date().toISOString(),
             userId: user.uid
-          });
+          }));
           if (adjError) throw adjError;
         }
       }

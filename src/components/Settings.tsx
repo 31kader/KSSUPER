@@ -1276,10 +1276,10 @@ export function Settings({ settings }: { settings: CompanySettings }) {
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-xs font-bold text-slate-700 flex items-center gap-2">
-                        <Zap size={14} className="text-amber-500 animate-pulse" />
-                        Mode V8 Super Turbo
+                        <Zap size={14} className="text-amber-500" />
+                        Synchronisation Temps Réel (Supabase)
                       </p>
-                      <p className="text-[10px] text-slate-500 uppercase tracking-tighter">Synchronisation instantanée & Mode éco désactivé.</p>
+                      <p className="text-[10px] text-slate-500 uppercase tracking-tighter">Mise à jour instantanée des données sur tous les appareils.</p>
                     </div>
                     <button 
                       type="button"
