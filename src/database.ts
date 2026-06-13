@@ -112,24 +112,24 @@ const TABLE_COLUMNS: Record<string, string[]> = {
     'delivery_days', 'payment_days', 'planning_notes', 'updated_at'
   ],
   users: [
-    'id', 'uid', 'email', 'display_name', 'password_hash', 'role', 'employee_id', 'join_date', 'updated_at'
+    'id', 'uid', 'email', 'display_name', 'password_hash', 'role', 'join_date', 'updated_at'
   ],
   settings: [
     'id', 'name', 'logo_url', 'address', 'phone', 'email', 'tax_number', 'receipt_template', 'label_template', 
     'currency', 'tax_rate', 'loyalty_points_per_currency_unit', 'loyalty_point_value', 'footer_text', 
-    'accounting_format', 'site_locations', 'role_kpis', 'role_permissions', 'notifications', 'operational_costs', 'locking_period_days', 
+    'accounting_format', 'site_locations', 'role_kpis', 'notifications', 'operational_costs', 'locking_period_days', 
     'delivery_zones', 'paper_format', 'silent_printing', 'global_stock_alert_threshold', 'api_keys', 
     'available_taxes', 'display_price_ht', 'loyalty_tiers', 'enable_time_clock', 'session_timeout_minutes', 
     'audit_log_retention_days', 'brand_color', 'fast_mode_enabled', 'default_lead_time_days', 'loyalty_points_per_unit'
   ],
   promotions: [
-    'id', 'name', 'type', 'value', 'min_purchase', 'start_date', 'end_date', 'is_active', 'applicable_categories', 'code', 'buy_quantity', 'get_quantity', 'applicable_products', 'updated_at'
+    'id', 'name', 'type', 'value', 'start_date', 'end_date', 'is_active', 'applicable_categories', 'code', 'buy_quantity', 'get_quantity', 'applicable_products', 'updated_at'
   ],
   returns: [
     'id', 'transaction_id', 'product_id', 'quantity', 'reason', 'condition', 'refund_amount', 'date', 'status', 'notes'
   ],
   online_orders: [
-    'id', 'customer_id', 'customer_email', 'external_order_id',
+    'id', 'customer_id', 'external_order_id',
     'items', 'total', 'status', 'shipping_address', 'payment_status', 'payment_method', 
     'source', 'delivery_method', 'pickup_time', 'synced_to_pos', 
     'assigned_employee_id', 'assigned_employee_name', 'assigned_picker_id', 'assigned_picker_name',
@@ -139,10 +139,10 @@ const TABLE_COLUMNS: Record<string, string[]> = {
     'id', 'supplier_id', 'items', 'total_amount', 'status', 'date', 'documents'
   ],
   purchase_orders: [
-    'id', 'supplier_id', 'supplier_name', 'order_number', 'items', 'total_amount', 'total', 'status', 'expected_date', 'notes', 'created_at'
+    'id', 'supplier_id', 'order_number', 'items', 'total_amount', 'total', 'status', 'expected_date', 'notes', 'created_at'
   ],
   stock_adjustments: [
-    'id', 'product_id', 'product_name', 'old_quantity', 'new_quantity', 'adjustment', 'reason', 'timestamp', 'user_id', 'user_name', 'is_loss'
+    'id', 'product_id', 'old_quantity', 'new_quantity', 'adjustment', 'reason', 'timestamp', 'user_id', 'user_name', 'is_loss'
   ],
   supplier_payments: [
     'id', 'supplier_id', 'amount', 'method', 'date', 'reference', 'notes'
@@ -157,7 +157,7 @@ const TABLE_COLUMNS: Record<string, string[]> = {
     'id', 'supplier_id', 'last_sync', 'status', 'items_updated', 'errors'
   ],
   damaged_items: [
-    'id', 'product_id', 'product_name', 'quantity', 'date', 'reported_by', 'user_id', 'user_name', 'reason', 'cost_price', 'claim_status', 'status'
+    'id', 'product_id', 'quantity', 'date', 'reported_by', 'user_id', 'user_name', 'reason', 'cost_price', 'claim_status', 'status'
   ],
   advances: [
     'id', 'employee_id', 'amount', 'date', 'reason', 'status', 'approved_by', 'repayment_date'
